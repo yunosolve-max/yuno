@@ -226,13 +226,13 @@ async function brandAction(t) {
 }
 
 /* ---------- Deleting a cafe ---------- */
-// Firestore doesn't delete a cafe's sub-collections with it, so remove every
-// order, bill, call, counter and staff link first, then the cafe itself.
+// Firestore doesn't delete a cafe's sub-collections with it, so remove every order, bill, call,
+// counter, daily sales record, photo, game room and staff link first, then the cafe itself.
 async function deleteCafe(slug, progress) {
   let removed = 0;
   const staffSnap = await getDocs(collection(db, 'cafes', slug, 'staff'));
   const staffUids = staffSnap.docs.map(d => d.id);
-  for (const sub of ['orders', 'bills', 'calls', 'meta', 'staff']) {
+  for (const sub of ['orders', 'bills', 'calls', 'meta', 'days', 'media', 'rooms', 'staff']) {
     for (;;) {
       const snap = await getDocs(query(collection(db, 'cafes', slug, sub), limit(400)));
       if (snap.empty) break;
