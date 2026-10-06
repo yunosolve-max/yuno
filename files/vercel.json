@@ -1,0 +1,19 @@
+{
+  "cleanUrls": false,
+  "trailingSlash": false,
+  "rewrites": [
+    { "source": "/counter", "destination": "/counter.html" },
+    { "source": "/kitchen", "destination": "/kitchen.html" },
+    { "source": "/admin", "destination": "/admin.html" },
+    { "source": "/((?!counter|kitchen|admin|menu|index)[a-z0-9][a-z0-9-]*)", "destination": "/menu.html" }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
+      ]
+    }
+  ]
+}

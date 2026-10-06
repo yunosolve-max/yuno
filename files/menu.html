@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#EEEDF3">
+<title>Menu | YUNO</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='9' fill='%236F5CE6'/><path d='M9 14.5h12v3.8a5.7 5.7 0 0 1-5.7 5.7h-.6A5.7 5.7 0 0 1 9 18.3z' fill='%23fff'/><path d='M21 15.8h1.4a2.6 2.6 0 0 1 0 5.2H21' fill='none' stroke='%23fff' stroke-width='2'/><path d='M12.6 10.9a3.4 3.4 0 0 1 4.8 0M10.4 8.4a6.6 6.6 0 0 1 9.2 0' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round'/></svg>">
+<script>
+// Start downloading this cafe's menu immediately, while the rest of the page loads.
+// menu.js picks it up. (Project id and key match fb-menu.js.)
+(function () {
+  try {
+    var q = new URLSearchParams(location.search), c = q.get('cafe');
+    if (!c) { var s = location.pathname.split('/').filter(Boolean)[0] || ''; if (s && !/\.html?$/i.test(s) && s !== 'menu') c = s; }
+    c = decodeURIComponent(c || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 40);
+    if (!c) return;
+    window.__cafeP = fetch('https://firestore.googleapis.com/v1/projects/yumotapit-5027e/databases/(default)/documents/cafes/' + c + '?key=AIzaSyBe-MKZqI-z6HiSgBd3xK_3Vht8XY2KMgc')
+      .then(function (r) { if (r.status === 404) return 'missing'; if (!r.ok) throw new Error(r.status); return r.json(); })
+      .catch(function () { return null; });
+  } catch (e) {}
+})();
+</script>
+<link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
+<link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+<link rel="modulepreload" href="/menu.js">
+<link rel="modulepreload" href="/common.js">
+<link rel="modulepreload" href="/fb-menu.js">
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js">
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400;500;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400;500;600;700;800&display=swap"></noscript>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<main class="menu-page" id="app">
+  <div class="skel" aria-label="Loading the menu"><div class="sk-hero"><i class="sk-chip"></i><i class="sk-t1"></i><i class="sk-t2"></i></div><div class="sk-tiles"><i></i><i></i><i></i><i></i></div><div class="sk-list"><i></i><i></i><i></i></div></div>
+</main>
+<div id="overlay"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<noscript><p class="center-note">Please turn on JavaScript to see the menu.</p></noscript>
+<script type="module" src="/menu.js"></script>
+</body>
+</html>

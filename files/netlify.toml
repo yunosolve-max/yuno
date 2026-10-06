@@ -1,0 +1,20 @@
+# Netlify settings (backup of _redirects): /cornercup opens the customer menu page.
+[[redirects]]
+  from = "/counter"
+  to = "/counter.html"
+  status = 200
+
+[[redirects]]
+  from = "/kitchen"
+  to = "/kitchen.html"
+  status = 200
+
+[[redirects]]
+  from = "/admin"
+  to = "/admin.html"
+  status = 200
+
+[[redirects]]
+  from = "/:cafe"
+  to = "/menu.html"
+  status = 200

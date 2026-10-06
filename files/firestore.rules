@@ -1,0 +1,139 @@
+rules_version = '2';
+
+// YUNO security rules.
+// Paste this whole file into Firebase > Firestore Database > Rules, then click Publish.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Your admin login's User UID (from Firebase > Authentication > Users).
+    function adminUid() { return 'ZTLPHkeWeBXEfzkYiGTtz0U38Wl1'; }
+
+    function signedIn() { return request.auth != null; }
+    function isAdmin() { return signedIn() && request.auth.uid == adminUid(); }
+    function isStaff(cafeId) {
+      return isAdmin() ||
+        (signedIn() && exists(/databases/$(database)/documents/cafes/$(cafeId)/staff/$(request.auth.uid)));
+    }
+    function cafe(cafeId) { return get(/databases/$(database)/documents/cafes/$(cafeId)).data; }
+
+    // A new order from a customer's phone must look exactly like a real order.
+    function validNewOrder(cafeId) {
+      let d = request.resource.data;
+      let c = cafe(cafeId);
+      return c.acceptingOrders == true
+        && d.keys().hasOnly(['table', 'items', 'note', 'total', 'status', 'createdAt'])
+        && d.keys().hasAll(['table', 'items', 'total', 'status', 'createdAt'])
+        && d.status == 'new'
+        && d.table is int && d.table >= 1 && d.table <= c.tables
+        && d.items is list && d.items.size() >= 1 && d.items.size() <= 30
+        && d.total is number && d.total >= 0 && d.total <= 100000
+        && (!('note' in d) || (d.note is string && d.note.size() <= 200))
+        && d.createdAt == request.time;
+    }
+
+    // An order typed in by cafe staff (parcel, walk-in, or table).
+    function validStaffOrder() {
+      let d = request.resource.data;
+      return d.items is list && d.items.size() >= 1 && d.items.size() <= 60
+        && d.table is int && d.table >= 0 && d.table <= 100
+        && d.status in ['new', 'preparing', 'ready', 'served']
+        && d.createdAt == request.time;
+    }
+
+    // Only the admin can read this. The admin page uses it to check who is signed in.
+    match /config/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Which cafes each staff login belongs to.
+    match /staffIndex/{uid} {
+      allow get: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow list, write: if isAdmin();
+    }
+
+    match /cafes/{cafeId} {
+      // Anyone can see a cafe's menu (customers need it).
+      allow read: if true;
+      // Only the admin creates or deletes cafes.
+      allow create, delete: if isAdmin();
+      // Staff can change the menu, name, tables, and pause orders. Nothing else.
+      allow update: if isAdmin() || (isStaff(cafeId)
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['name', 'tables', 'menu', 'categories', 'acceptingOrders', 'settings', 'updatedAt', 'popular', 'popularAt', 'photosV'])
+        && request.resource.data.name is string && request.resource.data.name.size() <= 60
+        && request.resource.data.tables is int
+        && request.resource.data.tables >= 1 && request.resource.data.tables <= 100
+        && request.resource.data.menu is list && request.resource.data.menu.size() <= 300
+        && request.resource.data.categories is list && request.resource.data.categories.size() <= 40
+        && request.resource.data.acceptingOrders is bool
+        && (!('settings' in request.resource.data) || request.resource.data.settings is map));
+
+      match /staff/{uid} {
+        allow get: if signedIn() && (request.auth.uid == uid || isAdmin());
+        allow list, write: if isAdmin();
+      }
+
+      match /orders/{orderId} {
+        // Customers place orders from their phone. Staff can also type orders in.
+        allow create: if validNewOrder(cafeId) || (isStaff(cafeId) && validStaffOrder());
+        // Customers follow their own order by its secret id.
+        allow get: if true;
+        // Only staff can see the list of all orders.
+        allow list: if isStaff(cafeId);
+        // Staff can change anything except when the order was placed.
+        // A customer can only cancel their own order, and only before the cafe accepts it.
+        allow update: if (isStaff(cafeId)
+            && request.resource.data.createdAt == resource.data.createdAt
+            && request.resource.data.status in ['new', 'preparing', 'ready', 'served', 'rejected', 'cancelled'])
+          || (resource.data.status == 'new'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'cancelledBy', 'updatedAt'])
+            && request.resource.data.status == 'cancelled'
+            && request.resource.data.cancelledBy == 'customer')
+          // A customer can say "I've paid by UPI" on an unbilled order. Staff still check and bill it.
+          || (resource.data.status in ['new', 'preparing', 'ready', 'served']
+            && (!('billId' in resource.data) || resource.data.billId == null)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['payClaim', 'payClaimAt'])
+            && request.resource.data.payClaim == 'upi'
+            && request.resource.data.payClaimAt == request.time);
+        allow delete: if isStaff(cafeId);
+      }
+
+      // Bills and the bill number counter: staff only.
+      // Daily sales totals, kept up to date as bills are saved, so the calendar reads ~30 small records.
+      match /days/{day} {
+        allow read, write: if isStaff(cafeId);
+      }
+      // Food photos: everyone can see them, only staff can change them.
+      match /media/{docId} {
+        allow read: if true;
+        allow write: if isStaff(cafeId);
+      }
+      // Game rooms for customers playing on their own phones. Small, temporary, open to players with the code.
+      match /rooms/{code} {
+        allow read: if true;
+        allow create, update: if request.resource.data.keys().hasOnly(['game', 'status', 'host', 'players', 'board', 'turn', 'winner', 'q', 'qs', 'ans', 'deadline', 'createdAt', 'updatedAt'])
+          && request.resource.data.game in ['ttt', 'c4', 'quiz']
+          && request.resource.data.players is list && request.resource.data.players.size() <= 6;
+        allow delete: if true;
+      }
+      match /bills/{billId} {
+        allow read, create, update: if isStaff(cafeId);
+        // Only the admin can delete bills, when deleting a whole cafe.
+        allow delete: if isAdmin();
+      }
+      match /meta/{docId} {
+        allow read, write: if isStaff(cafeId);
+      }
+
+      match /calls/{callId} {
+        // Customers can call a waiter. Only staff can see and clear calls.
+        allow create: if request.resource.data.keys().hasOnly(['table', 'createdAt'])
+          && request.resource.data.table is int
+          && request.resource.data.table >= 1
+          && request.resource.data.table <= cafe(cafeId).tables
+          && request.resource.data.createdAt == request.time;
+        allow read, delete: if isStaff(cafeId);
+      }
+    }
+  }
+}
