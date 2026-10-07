@@ -2,7 +2,8 @@
 // Keep the config and version in step with fb.js.
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
 import {
-  getFirestore, doc, collection, addDoc, updateDoc, onSnapshot, serverTimestamp, getDoc, setDoc, deleteDoc, runTransaction
+  getFirestore, doc, collection, addDoc, updateDoc, onSnapshot, serverTimestamp, getDoc, setDoc, deleteDoc, runTransaction,
+  query, where, orderBy, limit, getDocs
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
 const app = initializeApp({
@@ -14,4 +15,4 @@ const app = initializeApp({
   appId: "1:790220678120:web:582955bc21f5591da6fa5d"
 });
 export const db = getFirestore(app);
-export { doc, collection, addDoc, updateDoc, onSnapshot, serverTimestamp, getDoc, setDoc, deleteDoc, runTransaction };
+export { doc, collection, addDoc, updateDoc, onSnapshot, serverTimestamp, getDoc, setDoc, deleteDoc, runTransaction, query, where, orderBy, limit, getDocs };

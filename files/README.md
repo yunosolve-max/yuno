@@ -108,3 +108,28 @@ Open a table. When all its food has been sent to the kitchen, three big buttons 
 **Cash**, **UPI**, **Card**. One tap saves the bill with that payment, using your normal GST and
 no discount, and prints it straight away. For a discount, a different GST or splitting the bill,
 tap **Discount, GST or split bill** underneath.
+
+## Cafe leaderboard games and prizes
+
+Two leaderboard games are in the customer's games menu (the purple **Play & win** button):
+
+- **Tea Stack**: tap to drop each layer onto the tower. Only the part that lands stays.
+- **Chai Rush**: ride the scooter down a 3-lane road; swipe or tap left/right, grab tea, dodge traffic.
+
+Each cafe has its own **Top 10**, which starts fresh every day at closing time (or every Monday).
+Only phones that scanned a table QR in the last 4 hours can post a score.
+
+**Prize:** counter **Settings → Games and prizes**: type a prize (like "Free masala tea") and pick
+daily or weekly. Whoever is #1 when the leaderboard starts fresh wins. On their next visit their
+phone shows a gold winner card with a ticking clock. Staff check the name in **Settings → Game
+leaderboard** and tap **Mark prize given**. Staff can also **Remove** rude or fake names there.
+
+**One-time Firebase setup:**
+1. Publish the new `firestore.rules` (it adds the `scores` rules).
+2. Recommended, for speed: Firestore → **Indexes** → **Composite** → **Create index**:
+   Collection ID `scores`, fields `pg` Ascending and `score` Descending, scope Collection.
+   Without it the leaderboard still works, just a little slower.
+
+**Turning games on or off (admin only):** on the admin page, each cafe card has a **Customer games**
+switch. Off hides every game, the leaderboard and the prize from that cafe's menu and counter.
+Cafe staff can't change it. Cafes are on by default.

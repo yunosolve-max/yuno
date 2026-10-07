@@ -5,11 +5,13 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Your admin login's User UID (from Firebase > Authentication > Users).
-    function adminUid() { return 'ZTLPHkeWeBXEfzkYiGTtz0U38Wl1'; }
+    // Admin logins' User UIDs (from Firebase > Authentication > Users).
+    // First: your new Gmail. Second: your old admin login, kept so you can't get locked out.
+    // To remove the old one later, delete it from this list and publish again.
+    function adminUids() { return ['TMEmAwS7H5O70tHMyMhm1TJINh52', 'ZTLPHkeWeBXEfzkYiGTtz0U38Wl1']; }
 
     function signedIn() { return request.auth != null; }
-    function isAdmin() { return signedIn() && request.auth.uid == adminUid(); }
+    function isAdmin() { return signedIn() && request.auth.uid in adminUids(); }
     function isStaff(cafeId) {
       return isAdmin() ||
         (signedIn() && exists(/databases/$(database)/documents/cafes/$(cafeId)/staff/$(request.auth.uid)));
@@ -29,6 +31,21 @@ service cloud.firestore {
         && d.total is number && d.total >= 0 && d.total <= 100000
         && (!('note' in d) || (d.note is string && d.note.size() <= 200))
         && d.createdAt == request.time;
+    }
+
+    // A game score from a customer's phone.
+    function validScore(sid) {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['pg', 'game', 'period', 'name', 'pidh', 'table', 'score', 'at'])
+        && d.game in ['stack', 'rush']
+        && d.period is string && d.period.size() == 11
+        && d.pg == d.period + '_' + d.game
+        && d.pidh is string && d.pidh.size() == 16
+        && sid == d.pg + '_' + d.pidh
+        && d.name is string && d.name.size() >= 1 && d.name.size() <= 14
+        && d.table is int && d.table >= 0 && d.table <= 100
+        && d.score is int && d.score >= 1 && d.score <= (d.game == 'stack' ? 500 : 99999)
+        && d.at == request.time;
     }
 
     // An order typed in by cafe staff (parcel, walk-in, or table).
@@ -88,17 +105,10 @@ service cloud.firestore {
           || (resource.data.status == 'new'
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'cancelledBy', 'updatedAt'])
             && request.resource.data.status == 'cancelled'
-            && request.resource.data.cancelledBy == 'customer')
-          // A customer can say "I've paid by UPI" on an unbilled order. Staff still check and bill it.
-          || (resource.data.status in ['new', 'preparing', 'ready', 'served']
-            && (!('billId' in resource.data) || resource.data.billId == null)
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['payClaim', 'payClaimAt'])
-            && request.resource.data.payClaim == 'upi'
-            && request.resource.data.payClaimAt == request.time);
+            && request.resource.data.cancelledBy == 'customer');
         allow delete: if isStaff(cafeId);
       }
 
-      // Bills and the bill number counter: staff only.
       // Daily sales totals, kept up to date as bills are saved, so the calendar reads ~30 small records.
       match /days/{day} {
         allow read, write: if isStaff(cafeId);
@@ -116,6 +126,19 @@ service cloud.firestore {
           && request.resource.data.players is list && request.resource.data.players.size() <= 6;
         allow delete: if true;
       }
+      // Game leaderboard. Each phone keeps one best score per game per day (or week).
+      // A score can only go up. Staff can hide a name or mark a prize as given.
+      match /scores/{sid} {
+        allow read: if true;
+        allow create: if validScore(sid) && cafe(cafeId).get('games', true) != false;
+        allow update: if (validScore(sid) && cafe(cafeId).get('games', true) != false
+            && request.resource.data.score > resource.data.score
+            && request.resource.data.pidh == resource.data.pidh
+            && !('hidden' in resource.data) && !('claimed' in resource.data))
+          || (isStaff(cafeId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hidden', 'claimed']));
+        allow delete: if isStaff(cafeId);
+      }
+      // Bills and the bill number counter: staff only.
       match /bills/{billId} {
         allow read, create, update: if isStaff(cafeId);
         // Only the admin can delete bills, when deleting a whole cafe.

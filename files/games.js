@@ -1,7 +1,8 @@
 // YUNO games: something fun while the food is cooking.
 // "On this phone" games work offline and cost nothing. "On your own phones" games use a
 // 4-letter room code and are turn-based, so each move is one tiny save in the database.
-import { esc, ls, reducedMotion } from './common.js';
+import { esc, ls, reducedMotion, lbPeriods } from './common.js';
+import { ARCADE, startArcade } from './arcade.js';
 
 const FOOD = ['\u2615', '\u{1F375}', '\u{1F96A}', '\u{1F35F}', '\u{1F370}', '\u{1F369}', '\u{1F95F}', '\u{1F355}'];
 const PCOLORS = ['#6F5CE6', '#E0573A', '#1E8A62', '#2F6FD6', '#C2185B', '#B7791F'];
@@ -78,8 +79,8 @@ export function openGames(o) {
   layer.hidden = false; document.body.classList.add('g-open');
   go('hub');
 }
-function closeGames() { leaveRoom(); clearTimers(); if (layer) layer.hidden = true; document.body.classList.remove('g-open'); }
-function go(screen, extra) { clearTimers(); G = Object.assign({ screen }, extra || {}); draw(); }
+function closeGames() { arcStop(); leaveRoom(); clearTimers(); if (layer) layer.hidden = true; document.body.classList.remove('g-open'); }
+function go(screen, extra) { if (screen !== 'arcplay') arcStop(); clearTimers(); G = Object.assign({ screen }, extra || {}); draw(); }
 
 function frame(title, body, back) {
   return '<div class="g-top"><button type="button" class="g-icon" data-g="' + (back || 'close') + '" aria-label="' + (back ? 'Back' : 'Close games') + '">' + (back ? '\u2039' : '\u2715') + '</button><h2>' + esc(title) + '</h2><span class="g-sp"></span></div><div class="g-body">' + body + '</div>';
@@ -89,9 +90,10 @@ function draw() {
   const s = G.screen;
   const html = s === 'hub' ? hubHtml() : s === 'players' ? playersHtml() : s === 'memory' ? memoryHtml() : s === 'ttt' ? tttHtml() : s === 'c4' ? c4Html()
     : s === 'tap' ? tapHtml() : s === 'react' ? reactHtml() : s === 'picker' ? pickerHtml() : s === 'quiz' ? quizHtml()
-    : s === 'online' ? onlineHtml() : s === 'room' ? roomHtml() : hubHtml();
+    : s === 'online' ? onlineHtml() : s === 'room' ? roomHtml() : s === 'arc' ? arcLobbyHtml() : s === 'arcplay' ? arcPlayHtml() : s === 'arcover' ? arcOverHtml() : hubHtml();
   layer.innerHTML = html;
-  layer.classList.toggle('g-full', ['tap', 'react', 'picker'].includes(s));
+  layer.classList.toggle('g-full', ['tap', 'react', 'picker', 'arcplay'].includes(s));
+  if (s === 'arcplay') arcRun();
 }
 
 /* ---------- Hub ---------- */
@@ -108,7 +110,7 @@ const ONLINE = [['ttt', '\u274C', 'Tic-tac-toe', '2 phones'], ['c4', '\u{1F534}'
 function hubHtml() {
   const card = ([k, ico, name, sub, a, b]) => '<button type="button" class="g-card" data-g="pick" data-k="' + k + '"><span class="g-ico" aria-hidden="true">' + ico + '</span><b>' + esc(name) + '</b><span>' + esc(sub) + '</span><i>' + (a === b ? a + ' players' : a + '\u2013' + b + ' players') + '</i></button>';
   return frame('Play while you wait',
-    '<p class="g-lead">Your food is on its way. Pick a game!</p>' +
+    '<p class="g-lead">Your food is on its way. Pick a game!</p>' + championsHtml() +
     '<h3 class="g-h">On this phone</h3><div class="g-grid">' + SHARED.map(card).join('') + '</div>' +
     '<h3 class="g-h">On your own phones</h3><p class="g-note">Everyone plays on their own phone with a room code.</p>' +
     '<div class="g-grid">' + ONLINE.map(([k, ico, name, sub]) => '<button type="button" class="g-card" data-g="online" data-k="' + k + '"><span class="g-ico" aria-hidden="true">' + ico + '</span><b>' + esc(name) + '</b><span>' + esc(sub) + '</span><i>Online</i></button>').join('') + '</div>' +
@@ -418,12 +420,22 @@ async function onClick(e) {
     case 'room-start': startRoom(); break;
     case 'room-move': roomMove(parseInt(t.dataset.i, 10)); break;
     case 'room-answer': quizAnswer(parseInt(t.dataset.i, 10)); break;
+    case 'arc': { const k = ARCADE[t.dataset.k] ? t.dataset.k : G.game; G.err = ''; go('arc', { game: k }); loadBoard(k); break; }
+    case 'arc-start': {
+      const f = layer.querySelector('.arc-nameform');
+      if (f) { const n = String(f.name.value || '').trim().slice(0, 14); if (!n) { G.err = 'Add your name so it can show on the leaderboard.'; draw(); break; } ls.set('yumotap:gname', n); }
+      go('arcplay', { game: G.game }); break;
+    }
+    case 'arc-quit': go('arc', { game: G.game }); break;
+    case 'arc-refresh': loadBoard(G.game, true); break;
     case 'room-again': roomTx(r => r.host === myId() ? { status: 'lobby', board: '', turn: 0, winner: '', q: 0, qs: [], ans: {}, deadline: 0 } : null); break;
   }
 }
 async function onSubmit(e) {
   e.preventDefault();
-  const f = e.target, name = String(f.name.value || '').trim().slice(0, 14);
+  const f = e.target;
+  if (f.dataset.form === 'arcname') { const b = layer.querySelector('[data-g="arc-start"]'); if (b) b.click(); return; }
+  const name = String(f.name.value || '').trim().slice(0, 14);
   if (!name) { G.err = 'Add your name.'; draw(); return; }
   ls.set('yumotap:gname', name);
   G.busy = true; G.err = ''; draw();
@@ -460,3 +472,153 @@ function onPointerUp(e) {
   pickerChanged(); draw();
 }
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && layer && !layer.hidden) closeGames(); });
+
+/* ---------- Cafe leaderboard games (Tea Stack, Chai Rush) ----------
+   Each player keeps their best score for the period (today, or this week) in one small record:
+   cafes/<cafe>/scores/<period>_<game>_<player>. Everyone at the cafe sees the top 10.
+   Only phones that scanned a table QR in the last few hours can post scores, and the cafe can
+   remove a name from the counter. The #1 player when the period ends wins the cafe's prize. */
+const ARC_ART = {
+  stack: '<svg viewBox="0 0 64 64" aria-hidden="true"><rect x="14" y="44" width="36" height="9" rx="4" fill="#17181D"/><rect x="17" y="34" width="30" height="9" rx="4" fill="#ABA0F7"/><rect x="20" y="24" width="26" height="9" rx="4" fill="#B9CFEE"/><rect x="24" y="14" width="20" height="9" rx="4" fill="#D6E96E"/><path d="M30 10c0-3 3-3 3-6M36 10c0-3 3-3 3-6" stroke="#17181D" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>',
+  rush: '<svg viewBox="0 0 64 64" aria-hidden="true"><rect x="10" y="4" width="44" height="56" rx="10" fill="#3B3D46"/><path d="M25 6v52M39 6v52" stroke="#fff" stroke-width="2.5" stroke-dasharray="6 6" opacity=".6"/><circle cx="32" cy="44" r="8" fill="#D6E96E"/><path d="M28 44h8M32 40v8" stroke="#17181D" stroke-width="2.4" stroke-linecap="round"/><rect x="40" y="14" width="9" height="9" rx="2.5" fill="#F5E9A9"/><rect x="15" y="22" width="9" height="9" rx="2.5" fill="#FFB48C"/></svg>'
+};
+let arcRunner = null;
+function arcStop() { if (arcRunner) { arcRunner.stop(); arcRunner = null; } }
+const ARC = { boards: {}, wins: {}, pidh: '', loaded: false };
+const st = () => (opts && opts.settings) || {};
+const periodMode = () => st().lbPeriod === 'week' ? 'week' : 'day';
+const periods = () => lbPeriods(st());
+const curWord = () => periodMode() === 'week' ? 'this week' : 'today';
+const prevWord = () => periodMode() === 'week' ? 'last week' : 'yesterday';
+const prize = () => String(st().prize || '').trim();
+const live = () => !!(opts && opts.cafeId && !opts.demo);
+function player() {
+  let p = ls.get('yuno:player', null);
+  if (!p || typeof p.pid !== 'string' || p.pid.length < 16) {
+    const a = new Uint8Array(15); (window.crypto || {}).getRandomValues ? crypto.getRandomValues(a) : a.forEach((_, i) => { a[i] = Math.random() * 256; });
+    p = { pid: Array.from(a, b => b.toString(36).padStart(2, '0')).join('').slice(0, 22) }; ls.set('yuno:player', p);
+  }
+  return p;
+}
+// Scores are saved under a scrambled form of this phone's secret player id, so nobody can claim another phone's prize.
+async function myHash() {
+  if (ARC.pidh) return ARC.pidh;
+  const pid = player().pid;
+  try {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('yuno:' + pid));
+    ARC.pidh = Array.from(new Uint8Array(buf).slice(0, 8), b => b.toString(16).padStart(2, '0')).join('');
+  } catch (e) {
+    let h1 = 0x811c9dc5, h2 = 0x1234567; for (const c of 'yuno:' + pid) { h1 = Math.imul(h1 ^ c.charCodeAt(0), 16777619); h2 = Math.imul(h2 ^ c.charCodeAt(0), 2246822507); }
+    ARC.pidh = ((h1 >>> 0).toString(16).padStart(8, '0') + (h2 >>> 0).toString(16).padStart(8, '0')).slice(0, 16);
+  }
+  return ARC.pidh;
+}
+async function fetchBoard(pg, n) {
+  const { db, collection, query, where, orderBy, limit, getDocs } = await FB();
+  const col = collection(db, 'cafes', opts.cafeId, 'scores');
+  let snap;
+  try { snap = await getDocs(query(col, where('pg', '==', pg), orderBy('score', 'desc'), limit(n || 15))); }
+  catch (e) { snap = await getDocs(query(col, where('pg', '==', pg), limit(100))); } // works even before the index is made
+  return snap.docs.map(d => Object.assign({ id: d.id }, d.data())).filter(x => !x.hidden && typeof x.score === 'number')
+    .sort((a, b) => b.score - a.score || ((a.at && a.at.toMillis ? a.at.toMillis() : 0) - (b.at && b.at.toMillis ? b.at.toMillis() : 0))).slice(0, 10);
+}
+async function loadBoard(game, force) {
+  if (!live()) return;
+  const pg = periods().cur + '_' + game, b = ARC.boards[pg];
+  if (b && !force && Date.now() - b.at < 20000) return;
+  ARC.boards[pg] = Object.assign({ list: [] }, b || {}, { loading: true, at: Date.now() });
+  try { ARC.boards[pg].list = await fetchBoard(pg); ARC.boards[pg].err = false; } catch (e) { ARC.boards[pg].err = true; }
+  ARC.boards[pg].loading = false; ARC.boards[pg].at = Date.now();
+  if (['hub', 'arc', 'arcover'].includes(G.screen)) draw();
+}
+// Did this phone win the last period? Then it shows a winner card to take to the counter.
+async function checkWins() {
+  if (!live() || !prize()) return;
+  const me = await myHash(), prev = periods().prev;
+  for (const game of Object.keys(ARCADE)) {
+    try { const top = (await fetchBoard(prev + '_' + game, 5))[0]; ARC.wins[game] = top && top.pidh === me ? top : null; } catch (e) {}
+  }
+  if (['hub', 'arc'].includes(G.screen)) draw();
+}
+function arcInit() { if (ARC.loaded || !live()) return; ARC.loaded = true; myHash().then(() => { Object.keys(ARCADE).forEach(g => loadBoard(g)); checkWins(); }); }
+function board(game) { return ARC.boards[periods().cur + '_' + game] || { list: [], loading: !ARC.loaded }; }
+
+function winCards() {
+  return Object.keys(ARCADE).filter(g => ARC.wins[g]).map(g => { const w = ARC.wins[g];
+    return '<section class="arc-win' + (w.claimed ? ' got' : '') + '"><span class="arc-trophy" aria-hidden="true">\u{1F3C6}</span><div><b>' + (w.claimed ? 'Prize collected. Well played!' : 'You won ' + esc(ARCADE[g].name) + ' ' + prevWord() + '!') + '</b>' +
+      (w.claimed ? '' : '<span>Show this screen at the counter to get: <strong>' + esc(prize()) + '</strong></span><span class="arc-live">' + esc(w.name) + ' · ' + w.score + ' points · <i data-clock>' + new Date().toLocaleTimeString('en-IN') + '</i></span>') + '</div></section>';
+  }).join('');
+}
+function prizeLine() {
+  if (!prize()) return '';
+  return '<p class="arc-prize"><span aria-hidden="true">\u{1F381}</span><span><b>' + esc(prize()) + '</b> for the #1 player ' + curWord() + '. The top score when the cafe closes' + (periodMode() === 'week' ? ' on Sunday' : '') + ' wins. Come back and show your phone to collect it.</span></p>';
+}
+function championsHtml() {
+  if (!opts || !opts.cafeId) return '';
+  arcInit();
+  const card = (g) => { const b = board(g), top = b.list[0];
+    return '<button type="button" class="arc-card arc-' + g + '" data-g="arc" data-k="' + g + '"><span class="arc-art">' + ARC_ART[g] + '</span><b>' + esc(ARCADE[g].name) + '</b>' +
+      '<span>' + (top ? '\u{1F451} ' + esc(top.name) + ', ' + top.score : live() ? (b.loading ? 'Loading scores…' : 'No scores yet. Be the first!') : 'Leaderboard game') + '</span><i>' + (prize() ? 'Play & win' : 'Leaderboard') + '</i></button>';
+  };
+  return winCards() + '<h3 class="g-h">Cafe champions</h3>' + prizeLine() + '<div class="g-grid arc-grid">' + card('stack') + card('rush') + '</div>';
+}
+function boardHtml(game, highlight) {
+  if (!live()) return '<p class="g-note">' + (opts && opts.demo ? 'Demo cafe: scores aren’t saved here. At a real cafe, everyone’s best score shows on the cafe leaderboard.' : '') + '</p>';
+  const b = board(game);
+  if (!b.list.length) return '<div class="arc-board"><p class="g-note">' + (b.loading ? 'Loading the leaderboard…' : b.err ? 'Couldn’t load the leaderboard. Check your internet.' : 'No scores ' + curWord() + ' yet. Be the first on the board!') + '</p></div>';
+  return '<ol class="arc-board">' + b.list.map((x, i) => '<li class="' + (x.pidh === ARC.pidh ? 'me' : '') + (highlight && x.pidh === ARC.pidh ? ' flash' : '') + '"><span class="arc-rank">' + (i < 3 ? ['\u{1F947}', '\u{1F948}', '\u{1F949}'][i] : i + 1) + '</span><span class="arc-name">' + esc(x.name) + (x.table ? '<small>Table ' + x.table + '</small>' : '') + '</span><b>' + x.score + '</b></li>').join('') + '</ol>';
+}
+const myBest = (game) => ls.get('yuno:best:' + (opts && opts.cafeId) + ':' + periods().cur + '_' + game, 0) || 0;
+function nameField() {
+  const n = ls.get('yumotap:gname', '');
+  return '<form class="g-form arc-nameform" data-form="arcname"><label class="g-field"><span>Your name on the leaderboard</span><input name="name" maxlength="14" autocomplete="nickname" value="' + esc(n) + '" placeholder="Like Anu or Team 4" required></label></form>';
+}
+function arcLobbyHtml() {
+  const g = G.game, A = ARCADE[g];
+  const canPost = live() && opts.inCafe;
+  return frame(A.name, winCards() + '<div class="arc-hero arc-' + g + '"><span class="arc-art big">' + ARC_ART[g] + '</span><p>' + esc(A.how) + '</p></div>' +
+    prizeLine() + (live() && !canPost ? '<p class="g-note arc-warn">Scan the QR code on your table to put your score on the leaderboard. You can still play for fun.</p>' : '') +
+    (canPost ? nameField() : '') + (G.err ? '<p class="g-err" role="alert">' + esc(G.err) + '</p>' : '') +
+    '<button type="button" class="g-btn arc-play" data-g="arc-start">Play</button>' +
+    (myBest(g) ? '<p class="g-note">Your best ' + curWord() + ': <b>' + myBest(g) + '</b></p>' : '') +
+    '<h3 class="g-h">Top 10 ' + curWord() + '</h3>' + boardHtml(g) + (live() ? '<button type="button" class="g-btn ghost" data-g="arc-refresh">Refresh</button>' : ''), 'hub');
+}
+function arcPlayHtml() {
+  return '<div class="g-fullbar"><button type="button" class="g-icon" data-g="arc-quit" aria-label="Stop game">✕</button><b>' + esc(ARCADE[G.game].name) + '</b><span></span></div><div class="arc-stage" id="arc-stage"></div>';
+}
+function arcRun() {
+  arcStop();
+  const host = layer.querySelector('#arc-stage'); if (!host) return;
+  const game = G.game;
+  requestAnimationFrame(() => { if (G.screen !== 'arcplay') return; arcRunner = startArcade(host, game, (score) => { arcRunner = null; arcFinish(game, score); }); });
+}
+async function arcFinish(game, score) {
+  const best = myBest(game), isBest = score > best;
+  go('arcover', { game, score, isBest, saving: false, saved: false, note: '' });
+  if (!live() || !opts.inCafe || !isBest || score <= 0) return;
+  const name = String(ls.get('yumotap:gname', '') || '').trim().slice(0, 14);
+  if (!name) { G.note = 'Add your name before playing to join the leaderboard.'; draw(); return; }
+  G.saving = true; draw();
+  try {
+    const pidh = await myHash(), period = periods().cur, pg = period + '_' + game;
+    const { db, doc, setDoc, serverTimestamp } = await FB();
+    await setDoc(doc(db, 'cafes', opts.cafeId, 'scores', pg + '_' + pidh), {
+      pg, game, period, name, pidh, table: Math.max(0, Math.min(100, parseInt(opts.table, 10) || 0)), score: Math.min(ARCADE[game].max, Math.floor(score)), at: serverTimestamp()
+    });
+    G.saved = true; ls.set('yuno:best:' + opts.cafeId + ':' + periods().cur + '_' + game, score);
+  } catch (e) { G.note = e && e.code === 'permission-denied' ? 'This score couldn’t be saved. The cafe may have removed this name.' : 'Couldn’t save your score. Check your internet.'; }
+  G.saving = false;
+  if (G.screen === 'arcover') draw();
+  await loadBoard(game, true);
+}
+function arcOverHtml() {
+  const g = G.game, b = board(g), i = b.list.findIndex(x => x.pidh === ARC.pidh);
+  const rank = i >= 0 && G.saved ? '<p class="arc-rankline">' + (i === 0 ? '\u{1F451} You’re #1 ' + curWord() + '!' : 'You’re #' + (i + 1) + ' ' + curWord()) + '</p>' : '';
+  return frame(ARCADE[g].name, '<div class="arc-over"><p class="arc-k">Your score</p><p class="arc-score">' + G.score + '</p>' +
+    (G.isBest && G.score > 0 ? '<p class="arc-best">New best ' + curWord() + '!</p>' : '<p class="g-note">Your best ' + curWord() + ': ' + myBest(g) + '</p>') +
+    (G.saving ? '<p class="g-note">Saving to the leaderboard…</p>' : '') + rank + (G.note ? '<p class="g-note arc-warn">' + esc(G.note) + '</p>' : '') +
+    '<div class="g-row"><button type="button" class="g-btn" data-g="arc-start">Play again</button><button type="button" class="g-btn ghost" data-g="hub">Other games</button></div></div>' +
+    '<h3 class="g-h">Top 10 ' + curWord() + '</h3>' + boardHtml(g, true), 'arc');
+}
+// The winner card shows a ticking clock, so staff know it's live on the phone and not a screenshot.
+setInterval(() => { if (layer && !layer.hidden) layer.querySelectorAll('[data-clock]').forEach(el => { el.textContent = new Date().toLocaleTimeString('en-IN'); }); }, 1000);

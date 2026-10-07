@@ -67,6 +67,7 @@ function cardSkeleton(slug) {
     '<a class="btn-ghost" target="_blank" rel="noopener" href="/counter?cafe=' + s + '">Open counter</a>' +
     '<a class="btn-ghost" target="_blank" rel="noopener" href="/kitchen?cafe=' + s + '">Kitchen screen</a>' +
     '<a class="btn-ghost" target="_blank" rel="noopener" href="/counter?cafe=' + s + '&view=settings">QR codes</a></div>' +
+    '<div class="feat-row"></div>' +
     '<p class="muted" style="font-size:14px;font-weight:600;margin-top:6px">Staff logins</p><ul class="staff-list"></ul>' +
     '<form class="add-staff" data-slug="' + s + '" novalidate><div class="row">' +
     '<label class="field"><span>Staff email</span><input class="input" type="email" name="email" autocomplete="off" placeholder="owner@cafe.com"></label>' +
@@ -83,6 +84,14 @@ function cardSkeleton(slug) {
     '<label class="field"><span>Type <b>' + s + '</b> to confirm</span><input class="input" name="confirm" autocomplete="off" autocapitalize="off" spellcheck="false"></label>' +
     '<p class="err" hidden role="alert"></p><button class="btn btn-danger" type="submit">Delete forever</button></form></details>';
 }
+const gamesBusy = {};
+async function toggleGames(slug) {
+  const c = S.cafes.find(x => x.id === slug); if (!c || gamesBusy[slug]) return;
+  gamesBusy[slug] = true; renderCafes();
+  try { await updateDoc(doc(db, 'cafes', slug), { games: !c.games, updatedAt: serverTimestamp() }); toast(c.name + ': games turned ' + (c.games ? 'off.' : 'on.')); }
+  catch (e) { toast('Couldn\u2019t change that. Check your internet.'); }
+  delete gamesBusy[slug]; renderCafes();
+}
 function renderCafes() {
   const box = $('#cafe-list'); if (!box) return;
   if (!S.cafes.length) { box.innerHTML = '<p class="empty">No cafes yet. Add your first one on the right.</p>'; cardEls = {}; return; }
@@ -94,6 +103,8 @@ function renderCafes() {
     if (!el) { el = document.createElement('article'); el.className = 'cafe-card'; el.id = 'cafe-' + c.id; el.innerHTML = cardSkeleton(c.id); cardEls[c.id] = el; }
     el.querySelector('.cc-head').innerHTML = '<h3>' + (c.brand.logo ? '<img class="cc-logo" src="' + c.brand.logo + '" alt="">' : '') + esc(c.name) + '</h3><p class="muted" style="font-size:14px">' + esc(location.origin + '/menu.html?cafe=' + c.id) +
       ', ' + c.tables + ' tables, ' + c.menu.length + ' menu items, ' + (c.acceptingOrders ? 'taking orders' : 'orders paused') + '</p>';
+    el.querySelector('.feat-row').innerHTML = '<div><b>Customer games</b><small>' + (c.games ? 'On: games, leaderboard and prizes show on the menu.' : 'Off: customers don\u2019t see any games.') + '</small></div>' +
+      '<button type="button" class="sw" role="switch" aria-checked="' + c.games + '" aria-label="Customer games for ' + esc(c.name) + '" data-action="toggle-games" data-slug="' + esc(c.id) + '"' + (gamesBusy[c.id] ? ' disabled' : '') + '></button>';
     const staff = S.staff[c.id] || [];
     el.querySelector('.staff-list').innerHTML = staff.length ? staff.map(p =>
       '<li><span>' + esc(p.email || p.id) + '</span><button type="button" class="btn-ghost" data-action="remove-staff" data-slug="' + esc(c.id) + '" data-uid="' + esc(p.id) + '">Remove</button></li>').join('')
@@ -232,7 +243,7 @@ async function deleteCafe(slug, progress) {
   let removed = 0;
   const staffSnap = await getDocs(collection(db, 'cafes', slug, 'staff'));
   const staffUids = staffSnap.docs.map(d => d.id);
-  for (const sub of ['orders', 'bills', 'calls', 'meta', 'days', 'media', 'rooms', 'staff']) {
+  for (const sub of ['orders', 'bills', 'calls', 'meta', 'days', 'media', 'rooms', 'scores', 'staff']) {
     for (;;) {
       const snap = await getDocs(query(collection(db, 'cafes', slug, sub), limit(400)));
       if (snap.empty) break;
@@ -276,6 +287,7 @@ document.addEventListener('click', async e => {
     return;
   }
   if (['pick-theme', 'pick-mode', 'pick-fest', 'logo-remove', 'brand-save'].includes(t.dataset.action)) { brandAction(t); return; }
+  if (t.dataset.action === 'toggle-games') { toggleGames(t.dataset.slug); return; }
   if (t.dataset.action === 'remove-staff') {
     if (t.dataset.armed !== '1') { t.dataset.armed = '1'; t.textContent = 'Tap again to remove'; setTimeout(() => { t.dataset.armed = ''; t.textContent = 'Remove'; }, 3000); return; }
     const slug = t.dataset.slug, uid = t.dataset.uid;
