@@ -1,0 +1,6 @@
+# Netlify: make /cornercup (any cafe's web name) open the customer menu page.
+/counter   /counter.html  200
+/admin     /admin.html    200
+/kitchen   /kitchen.html  200
+/menu      /menu.html     200
+/:cafe     /menu.html     200
