@@ -1109,3 +1109,12 @@ body.g-open{overflow:hidden}
 .qb:disabled{opacity:.5;cursor:default}
 .btn-bill.quiet{background:transparent;color:var(--ink);border:1px solid var(--hair);padding:12px;font-size:14px}
 .wa-help{background:#25D366!important;color:#06290F!important;text-decoration:none;display:inline-flex}
+
+/* Table pass: ordering only after scanning the table QR */
+.chip-table.off{opacity:.75;font-weight:600}
+.pass-banner{background:var(--sky-tint);color:var(--ink)}
+.pass-note{margin:4px 2px 10px;font-size:14px;font-weight:600;color:var(--ink);text-align:center}
+.visit-done{margin:18px 0 8px;padding:26px 20px 22px;border-radius:26px;background:var(--surface);border:1px solid var(--hair);text-align:center}
+.visit-done .vd-check{width:64px;height:64px;margin:0 auto 12px;border-radius:50%;display:grid;place-items:center;font-size:30px;font-weight:800;background:var(--lime);color:#17181D}
+.visit-done h2{font-size:24px;font-weight:700;letter-spacing:-.02em;margin-bottom:6px}
+.visit-done p{color:var(--muted);font-size:15px;line-height:1.45;margin:0 auto 16px;max-width:30ch}

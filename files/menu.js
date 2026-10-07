@@ -19,6 +19,45 @@ const cafeId = readCafeId();
 const qrTable = parseInt(params.get('table') || params.get('t'), 10);
 const ORDERS_KEY = 'yumotap:' + cafeId + ':orders';
 
+/* ---------- Table pass: only a phone that just scanned the table's QR can order ----------
+   Scanning gives this browser tab a pass for that table. The table number is then removed
+   from the address, so reopening the page later from history or a saved link can't order.
+   The pass ends when the bill is paid, or 2 hours after the scan. Scanning again starts a new one. */
+const PASS_KEY = 'yuno:pass:' + cafeId, PASS_MS = 2 * 3600000;
+let memPass = null;
+function readPass() {
+  try { const p = JSON.parse(sessionStorage.getItem(PASS_KEY) || 'null'); if (p && p.t > 0) return p; } catch (e) {}
+  return memPass;
+}
+function savePass(p) { memPass = p; try { sessionStorage.setItem(PASS_KEY, JSON.stringify(p)); } catch (e) {} }
+function passState() {
+  const p = readPass();
+  if (!p) return 'none';
+  if (p.done) return 'paid';
+  if (Date.now() - p.at > PASS_MS) return 'expired';
+  return 'ok';
+}
+if (qrTable > 0) {
+  savePass({ t: qrTable, at: Date.now(), ids: [] });
+  try {
+    const u = new URL(location.href); u.searchParams.delete('table'); u.searchParams.delete('t');
+    history.replaceState(history.state, '', u.pathname + (u.searchParams.toString() ? '?' + u.searchParams.toString() : '') + u.hash);
+  } catch (e) {}
+}
+const passTable = () => passState() === 'ok' ? readPass().t : null;
+// When every order placed with this pass is paid (or was turned down), the visit is over.
+function checkPassDone() {
+  const p = readPass(); if (!p || p.done || !p.ids || !p.ids.length) return;
+  const os = p.ids.map(id => S.orders[id]);
+  if (os.some(o => !o)) return;
+  if (os.every(o => o.paid || o.status === 'rejected' || o.status === 'cancelled') && os.some(o => o.paid)) {
+    p.done = Date.now(); savePass(p); S.table = null; S.cart = {}; S.note = '';
+    if (S.overlay === 'cart' || S.overlay === 'dish') { S.overlay = null; renderOverlay(); }
+  }
+}
+const canOrder = () => S.demo || passState() === 'ok';
+const NO_PASS_MSG = { paid: 'Your bill is paid. Thank you for coming! To order again, scan the QR code on your table.', expired: 'This order link has timed out. Scan the QR code on your table to order.', none: 'To order, scan the QR code on your table.' };
+
 const STATUS_TEXT = {
   new: 'Waiting for the cafe to confirm',
   preparing: 'Your order is being prepared',
@@ -35,8 +74,8 @@ const S = {
   cafe: null,
   fresh: false,
   photos: {}, dishId: null, hLang: 'en', hAnswer: null, listening: false,
-  table: qrTable > 0 ? qrTable : null,
-  tableFromQR: qrTable > 0,
+  table: passTable(),
+  tableFromQR: true,
   cart: {}, note: '', noteOpen: false, overlay: null, view: 'menu', activeCat: null,
   orders: {}, placing: false, lastCallAt: 0, cancelArm: null
 };
@@ -92,6 +131,7 @@ function trackOrder(id, at) {
       cancelReason: typeof d.cancelReason === 'string' ? d.cancelReason.slice(0, 120) : '',
       paid: typeof d.billId === 'string' && d.billId.length > 0
     };
+    checkPassDone();
     render();
   }, () => dropOrder(id)); }).catch(() => { delete orderSubs[id]; });
 }
@@ -152,6 +192,7 @@ function dishSheet() {
   if (m.allergens.length) facts.push([ml ? '\u0D05\u0D1F\u0D19\u0D4D\u0D19\u0D3F\u0D2F\u0D35' : 'Contains', m.allergens.map(k => { const a = ALLERGENS.find(x => x[0] === k); return a ? (ml ? a[2] : a[1]) : k; }).join(', ')]);
   const q = S.cart[m.id] || 0, A = S.hAnswer;
   const act = !m.available ? '<p class="sold-tag" style="display:inline-block">Sold out today</p>'
+    : !canOrder() ? '<p class="pass-note">' + esc(NO_PASS_MSG[passState()]) + '</p>'
     : q ? '<div class="dish-act"><div class="step"><button type="button" data-action="dec" data-id="' + esc(m.id) + '" aria-label="Remove one">\u2212</button><span aria-live="polite">' + q + '</span><button type="button" data-action="inc" data-id="' + esc(m.id) + '" aria-label="Add one more">+</button></div><button type="button" class="btn-primary inline" data-action="close">Done</button></div>'
     : '<button type="button" class="btn-primary" data-action="inc" data-id="' + esc(m.id) + '">Add to order, ' + rupee(m.price) + '</button>';
   return '<div class="overlay" data-action="close-bg"><div class="sheet dish-sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-h"><div class="grabber" aria-hidden="true"></div>' +
@@ -203,7 +244,7 @@ function lastOrder() {
   return last.items.filter(x => byId[x.id] && byId[x.id].available).map(x => ({ id: x.id, qty: Math.max(1, Math.min(20, x.qty | 0)), name: byId[x.id].name }));
 }
 function reorderCard() {
-  const items = lastOrder(); if (!items.length) return '';
+  const items = lastOrder(); if (!items.length || !canOrder()) return '';
   return '<section class="reorder"><div><b>Order again?</b><span>' + items.map(i => i.qty + '\u00D7 ' + esc(i.name)).join(', ') + '</span></div><button type="button" class="btn-primary inline" data-action="reorder" data-key="reorder">Add</button></section>';
 }
 
@@ -213,6 +254,7 @@ function itemRow(m, cat) {
   const [tone, svg] = iconFor(cat);
   let act;
   if (!m.available) act = '<span class="sold-tag">Sold out</span>';
+  else if (!canOrder()) act = '';
   else if (q) act = '<div class="step"><button type="button" data-action="dec" data-id="' + esc(m.id) + '" data-key="dec-' + esc(m.id) + '" aria-label="Remove one ' + esc(m.name) + '">\u2212</button><span aria-live="polite">' + q + '</span><button type="button" data-action="inc" data-id="' + esc(m.id) + '" data-key="inc-' + esc(m.id) + '" aria-label="Add one more ' + esc(m.name) + '">+</button></div>';
   else act = '<button type="button" class="btn-add" data-action="inc" data-id="' + esc(m.id) + '" data-key="inc-' + esc(m.id) + '" aria-label="Add ' + esc(m.name) + '">' + PLUS + '</button>';
   const photo = S.photos[m.id], idA = esc(m.id);
@@ -267,11 +309,12 @@ function renderMain() {
   let count = 0, total = 0;
   Object.keys(S.cart).forEach(id => { if (byId[id]) { count += S.cart[id]; total += byId[id].price * S.cart[id]; } });
 
-  const tableChip = S.table
-    ? (S.tableFromQR ? '<span class="chip-table">Table ' + S.table + '</span>' : '<button type="button" class="chip-table" data-action="open-table" data-key="table">Table ' + S.table + '</button>')
-    : '<button type="button" class="chip-table" data-action="open-table" data-key="table">Pick table</button>';
-  let h = '<header class="c-head' + (festNow(c.brand) ? ' fest' : '') + '"' + (festNow(c.brand) ? ' data-deco="' + festNow(c.brand).deco + '"' : '') + '><div class="c-top">' + tableChip + '<span class="c-top-r"><button type="button" class="c-games" data-action="games" data-key="games" aria-label="Games">\u{1F3AE}</button><button type="button" class="c-call" data-action="call" data-key="call">' + BELL + 'Call waiter</button></span></div>' +
-    (c.brand.logo ? '<img class="c-logo" src="' + c.brand.logo + '" alt="' + esc(c.name) + ' logo">' : '') + '<h1 class="c-cafe">' + esc(c.name) + '</h1>' + (festNow(c.brand) ? '<p class="c-fest"><span aria-hidden="true">' + festNow(c.brand).deco + '</span> ' + festNow(c.brand).msg + '</p>' : '') + '<p class="c-sub">' + (view === 'menu' ? 'Tap + to add food. Tap Place order when you\u2019re done.' : 'Thanks for your order! You can follow it here.') + '</p></header>';
+  const tableChip = S.demo
+    ? '<button type="button" class="chip-table" data-action="open-table" data-key="table">' + (S.table ? 'Table ' + S.table : 'Pick table') + '</button>'
+    : canOrder() && S.table ? '<span class="chip-table">Table ' + S.table + '</span>' : '<span class="chip-table off">Scan to order</span>';
+  let h = '<header class="c-head' + (festNow(c.brand) ? ' fest' : '') + '"' + (festNow(c.brand) ? ' data-deco="' + festNow(c.brand).deco + '"' : '') + '><div class="c-top">' + tableChip + '<span class="c-top-r"><button type="button" class="c-games" data-action="games" data-key="games" aria-label="Games">\u{1F3AE}</button>' + (canOrder() ? '<button type="button" class="c-call" data-action="call" data-key="call">' + BELL + 'Call waiter</button>' : '') + '</span></div>' +
+    (c.brand.logo ? '<img class="c-logo" src="' + c.brand.logo + '" alt="' + esc(c.name) + ' logo">' : '') + '<h1 class="c-cafe">' + esc(c.name) + '</h1>' + (festNow(c.brand) ? '<p class="c-fest"><span aria-hidden="true">' + festNow(c.brand).deco + '</span> ' + festNow(c.brand).msg + '</p>' : '') + '<p class="c-sub">' + (view === 'menu' ? (canOrder() ? 'Tap + to add food. Tap Place order when you\u2019re done.' : 'Have a look at our menu.') : 'Thanks for your order! You can follow it here.') + '</p></header>';
+  if (!canOrder() && view === 'menu') h += '<p class="banner pass-banner">' + NO_PASS_MSG[passState()] + '</p>';
   if (!c.acceptingOrders) h += '<p class="banner">The cafe isn\u2019t taking phone orders right now. You can still see the menu. Please order at the counter.</p>';
 
   if (view === 'menu') {
@@ -298,7 +341,11 @@ function renderMain() {
   } else {
     h += '<div class="status" aria-live="polite">' + payPanel() + mine.slice(0, 3).map(statusCard).join('') +
       (mine.some(o => ['new', 'preparing', 'ready'].includes(o.status)) ? '<button type="button" class="games-banner" data-action="games"><span aria-hidden="true">\u{1F3AE}</span><span><b>Play while you wait</b> Memory, quiz, tap race and more, alone or with friends.</span></button>' : '') +
-      '<div class="st-btns"><button type="button" class="btn-primary" data-action="more" data-key="more">Order more food</button><button type="button" class="btn-soft" data-action="call" data-key="call2">Call a waiter</button></div></div>';
+      (canOrder()
+        ? '<div class="st-btns"><button type="button" class="btn-primary" data-action="more" data-key="more">Order more food</button><button type="button" class="btn-soft" data-action="call" data-key="call2">Call a waiter</button></div>'
+        : '<section class="visit-done"><div class="vd-check" aria-hidden="true">' + (passState() === 'paid' ? '\u2713' : '\u{1F4F7}') + '</div>' +
+          '<h2>' + (passState() === 'paid' ? 'Bill paid. Thank you!' : 'Scan to order') + '</h2><p>' + esc(NO_PASS_MSG[passState()]) + '</p>' +
+          '<button type="button" class="btn-soft" data-action="more" data-key="more">See the menu</button></section>') + '</div>';
     h += '<p class="c-foot">Ordering by <b>YUNO</b></p>';
   }
   app.innerHTML = h;
@@ -334,8 +381,9 @@ function cartSheet() {
         ? '<label class="note-label" for="note">Note for the kitchen</label><textarea id="note" data-key="note" maxlength="200" placeholder="Less sugar, no onion, extra spicy">' + esc(S.note) + '</textarea>'
         : '<button type="button" class="note-toggle" data-action="note-open" data-key="note-open">' + PLUS + 'Add a note for the kitchen (optional)</button>') +
       '<div class="sum"><span>Total' + (S.cafe.settings.gstPct ? ' <small>+ GST</small>' : '') + '</span><b>' + rupee(total) + '</b></div>' +
-      '<button type="button" class="btn-primary" data-action="place" data-key="place"' + (S.placing || paused || !S.fresh ? ' disabled' : '') + '>' +
-      (S.placing ? 'Placing order\u2026' : paused ? 'Ordering is paused' : !S.fresh ? 'Getting the latest menu\u2026' : 'Place order for ' + rupee(total)) + '</button>' +
+      (canOrder() ? '' : '<p class="pass-note">' + NO_PASS_MSG[passState()] + '</p>') +
+      '<button type="button" class="btn-primary" data-action="place" data-key="place"' + (S.placing || paused || !S.fresh || !canOrder() ? ' disabled' : '') + '>' +
+      (S.placing ? 'Placing order\u2026' : !canOrder() ? 'Scan the table QR to order' : paused ? 'Ordering is paused' : !S.fresh ? 'Getting the latest menu\u2026' : 'Place order for ' + rupee(total)) + '</button>' +
       '<p class="fine">' + 'The cafe confirms your order before the kitchen starts.' + '</p>';
   } else {
     body = '<p class="empty">Your order is empty. Add something from the menu.</p>';
@@ -374,6 +422,7 @@ function closeOverlay() {
 /* ---------- Actions ---------- */
 async function placeOrder() {
   if (S.placing || !S.cafe || !S.fresh) return;
+  if (!canOrder()) { toast(NO_PASS_MSG[passState()]); render(); renderOverlay(); return; }
   if (!S.cafe.acceptingOrders) { toast('The cafe isn\u2019t taking phone orders right now.'); return; }
   if (!(S.table >= 1 && S.table <= S.cafe.tables)) { openOverlay('table'); toast('Pick your table first.'); return; }
   const byId = menuById();
@@ -395,6 +444,7 @@ async function placeOrder() {
       table: S.table, items, note: S.note.trim().slice(0, 200), total, status: 'new', createdAt: serverTimestamp()
     });
     remember(ref.id);
+    { const p = readPass(); if (p) { p.ids = (p.ids || []).concat(ref.id).slice(-30); savePass(p); } }
     trackOrder(ref.id, Date.now());
     ls.set(LAST_KEY, { items: items.map(i => ({ id: i.id, qty: i.qty })), at: Date.now() });
     S.cart = {}; S.note = ''; S.noteOpen = false; S.view = 'status'; S.overlay = 'placed'; animNext = true;
@@ -410,6 +460,7 @@ async function placeOrder() {
 }
 async function callWaiter() {
   if (!S.cafe) return;
+  if (!canOrder()) { toast(NO_PASS_MSG[passState()]); return; }
   if (!(S.table >= 1 && S.table <= S.cafe.tables)) { openOverlay('table'); toast('Pick your table first.'); return; }
   if (S.demo) { toast('Demo: at a real cafe, a waiter would now come to table ' + S.table + '.'); return; }
   if (Date.now() - S.lastCallAt < 30000) { toast('A waiter is already on the way.'); return; }
@@ -438,10 +489,10 @@ document.addEventListener('click', e => {
       if (sec) sec.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
       break;
     }
-    case 'inc': if (byId[id] && byId[id].available) { S.cart[id] = Math.min(20, (S.cart[id] || 0) + 1); refreshCart(true); } break;
+    case 'inc': if (!canOrder()) { toast(NO_PASS_MSG[passState()]); break; } if (byId[id] && byId[id].available) { S.cart[id] = Math.min(20, (S.cart[id] || 0) + 1); refreshCart(true); } break;
     case 'dec': if (S.cart[id]) { S.cart[id]--; if (S.cart[id] <= 0) delete S.cart[id]; } refreshCart(false); break;
     case 'open-cart': openOverlay('cart', t); break;
-    case 'open-table': openOverlay('table', t); break;
+    case 'open-table': if (S.demo) openOverlay('table', t); break;
     case 'close': closeOverlay(); break;
     case 'close-bg': if (e.target === t) closeOverlay(); break;
     case 'pick-table': {
@@ -457,7 +508,7 @@ document.addEventListener('click', e => {
     case 'call': callWaiter(); break;
     case 'dish': openDish(id, t); break;
     case 'games': if (S.overlay) { S.overlay = null; renderOverlay(); } openGames(); break;
-    case 'reorder': { lastOrder().forEach(x => { S.cart[x.id] = Math.min(20, (S.cart[x.id] || 0) + x.qty); }); refreshCart(true); toast('Added your last order. Change anything you like.'); break; }
+    case 'reorder': if (!canOrder()) break; { lastOrder().forEach(x => { S.cart[x.id] = Math.min(20, (S.cart[x.id] || 0) + x.qty); }); refreshCart(true); toast('Added your last order. Change anything you like.'); break; }
     case 'hlang': S.hLang = t.dataset.l === 'ml' ? 'ml' : 'en'; S.hAnswer = null; if (helper) helper.stopSpeaking(); withFocus(renderOverlay); break;
     case 'ask': if (helper) helper.unlockSpeech(); helperSay('', t.dataset.q, []); break;
     case 'say': if (helper && S.hAnswer) { helper.unlockSpeech(); helper.speak(S.hAnswer.text, S.hLang); } break;
