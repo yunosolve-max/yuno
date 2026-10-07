@@ -377,7 +377,8 @@ function loginView() {
     '<label class="field"><span>Password</span><input class="input" type="password" name="password" autocomplete="current-password"></label>' +
     (S.loginErr ? '<p class="err" role="alert">' + esc(S.loginErr) + '</p>' : '') +
     '<button class="btn-primary" type="submit"' + (S.loginBusy ? ' disabled' : '') + '>' + (S.loginBusy ? 'Signing in\u2026' : 'Sign in') + '</button>' +
-    '<p class="fine"><button type="button" class="linkbtn" data-action="forgot">Forgot password?</button></p></form></div>';
+    '<p class="fine"><button type="button" class="linkbtn" data-action="forgot">Forgot password?</button></p>' +
+    '<p class="fine">Can\u2019t sign in? <a href="https://wa.me/919061927047?text=' + encodeURIComponent('Hi YUNO, I can\u2019t sign in to my cafe') + '" target="_blank" rel="noopener">WhatsApp YUNO</a></p></form></div>';
 }
 function noteView(title, text) {
   return '<div class="center-note panel"><h1>' + esc(title) + '</h1><p>' + esc(text) + '</p><p style="margin-top:16px"><button class="btn-ghost" data-action="signout">Sign out</button></p></div>';
@@ -702,6 +703,8 @@ function settingsView() {
     '<p class="fine left">To print one KOT by hand, open a table, tap \u22EF on the order, then Print KOT. To print with no pop-up window, YUNO can set up Chrome on this computer for silent printing.</p></section>' +
     '<section class="panel-lite"><h3>Table QR codes</h3><label class="field"><span>Website address inside the codes</span><input class="input" id="qr-base" data-key="qr-base" value="' + esc(S.qrBase) + '" inputmode="url" autocomplete="off"><small>Set this to your own domain before printing real stickers. Printed codes can\u2019t change.</small></label>' +
     '<p class="qr-link">Table 1 opens: <span id="qr-sample">' + esc(tableLink(1)) + '</span></p><button type="button" class="btn-primary inline" data-action="print-qr">Print QR codes for ' + plural(c.tables, 'table') + '</button></section>' +
+    '<section class="panel-lite help-box"><h3>Need help?</h3><p class="muted" style="margin-bottom:12px">Message YUNO on WhatsApp. Send a photo of the screen and we\u2019ll sort it out. \u0D38\u0D39\u0D3E\u0D2F\u0D02 \u0D35\u0D47\u0D23\u0D4B? WhatsApp \u0D1A\u0D46\u0D2F\u0D4D\u0D2F\u0D42.</p>' +
+    '<a class="btn-primary inline wa-help" target="_blank" rel="noopener" href="https://wa.me/919061927047?text=' + encodeURIComponent('Hi YUNO, I need help with ' + (S.cafe ? S.cafe.name : 'my cafe')) + '">WhatsApp YUNO: +91 90619 27047</a></section>' +
     '<section class="panel-lite"><h3>Account</h3><p class="muted" style="margin-bottom:10px">Signed in as ' + esc(S.user && S.user.email) + '</p>' +
     (S.cafeChoices.length > 1 ? '<label class="field"><span>Cafe</span><select data-action-change="switch-cafe">' + S.cafeChoices.map(id => '<option value="' + esc(id) + '"' + (id === S.cafeId ? ' selected' : '') + '>' + esc(id) + '</option>').join('') + '</select></label>' : '') +
     '<button type="button" class="btn-ghost" data-action="signout">Sign out</button></section></div>';

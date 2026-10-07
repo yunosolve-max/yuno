@@ -1108,3 +1108,4 @@ body.g-open{overflow:hidden}
 .qb:active{transform:scale(.96)}
 .qb:disabled{opacity:.5;cursor:default}
 .btn-bill.quiet{background:transparent;color:var(--ink);border:1px solid var(--hair);padding:12px;font-size:14px}
+.wa-help{background:#25D366!important;color:#06290F!important;text-decoration:none;display:inline-flex}
