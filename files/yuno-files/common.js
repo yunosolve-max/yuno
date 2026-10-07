@@ -119,12 +119,17 @@ export function cleanCafe(d) {
     // The sales day ends at this hour (0 = midnight, 3 = 3 AM), so late nights count as one day.
     dayEndHour: st.dayEndHour == null ? 3 : Math.max(0, Math.min(6, parseInt(st.dayEndHour, 10) || 0)),
     // Warn the counter when a table has eaten but not paid after this many minutes. 0 = off.
-    unpaidMins: st.unpaidMins == null ? 20 : Math.max(0, Math.min(120, parseInt(st.unpaidMins, 10) || 0))
+    unpaidMins: st.unpaidMins == null ? 20 : Math.max(0, Math.min(120, parseInt(st.unpaidMins, 10) || 0)),
+    // Game leaderboard: the prize for the #1 player ('' = no prize), and whether it resets daily or weekly.
+    prize: String(st.prize || '').slice(0, 60),
+    lbPeriod: st.lbPeriod === 'week' ? 'week' : 'day'
   };
   return {
     name: String(d.name || 'Cafe').slice(0, 60),
     tables: Math.max(1, Math.min(100, parseInt(d.tables, 10) || 10)),
     acceptingOrders: d.acceptingOrders !== false,
+    // Customer games (and the leaderboard and prize). Only the YUNO admin can switch this.
+    games: d.games !== false,
     categories, menu, settings, brand: cleanBrand(d.brand),
     popular: Array.isArray(d.popular) ? d.popular.filter(x => typeof x === 'string').slice(0, 5) : [],
     popularAt: typeof d.popularAt === 'string' ? d.popularAt : '',
@@ -390,3 +395,13 @@ export function kotPrintedOnce(cafeId, id) {
   arr.push(id); ls.set(key, arr.slice(-300));
   return true;
 }
+
+/* ---------- Game leaderboard periods ----------
+   'd2026-10-08' for a day, 'w2026-10-05' (that week's Monday) for a week. Uses the cafe's sales day. */
+function addDaysKey(key, n) { const [y, m, d] = key.split('-').map(Number); return dayKey(new Date(y, m - 1, d + n)); }
+export function lbPeriods(settings) {
+  const s = settings || {}, day = bizDay(s.dayEndHour == null ? 3 : s.dayEndHour);
+  if (s.lbPeriod === 'week') { const [y, m, d] = day.split('-').map(Number), mon = addDaysKey(day, -((new Date(y, m - 1, d).getDay() + 6) % 7)); return { cur: 'w' + mon, prev: 'w' + addDaysKey(mon, -7), week: true }; }
+  return { cur: 'd' + day, prev: 'd' + addDaysKey(day, -1), week: false };
+}
+export const LB_GAMES = [['stack', 'Tea Stack'], ['rush', 'Chai Rush']];

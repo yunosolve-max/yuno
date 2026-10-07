@@ -2,11 +2,11 @@
 import {
   db, auth, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, collection, query, where, orderBy, onSnapshot,
   Timestamp, serverTimestamp, writeBatch, runTransaction, increment,
-  onAuthStateChanged, signInWithEmailAndPassword, signOut, sendPasswordResetEmail
+  onAuthStateChanged, signInWithEmailAndPassword, signOut, sendPasswordResetEmail, limit
 } from './fb.js';
 import {
   $, esc, rupee, money2, shortCode, toMs, ago, ls, toast, unlockAudio, chime, alarm, stopAlarm, alarmPlaying, audioReady,
-  cleanCafe, newId, BRAND_SVG, dayKey, fmtTime, fmtDateTime, iconFor, bizDay, bizStart, payAmount, shortMoney, processPhoto, ALLERGENS, SPICE, loginError, printOut, printKot, kotAuto, kotPrintedOnce } from './common.js';
+  cleanCafe, newId, BRAND_SVG, dayKey, fmtTime, fmtDateTime, iconFor, bizDay, bizStart, payAmount, shortMoney, processPhoto, ALLERGENS, SPICE, loginError, printOut, printKot, kotAuto, kotPrintedOnce, lbPeriods, LB_GAMES } from './common.js';
 
 const params = new URLSearchParams(location.search);
 const VIEWS = ['tables', 'bills', 'menu', 'settings'];
@@ -694,8 +694,12 @@ function settingsView() {
     '<h3 class="form-sub">Sales day and unpaid tables</h3>' +
     '<div class="row"><label class="field"><span>Sales day ends at</span><select name="dayEndHour">' + [0, 1, 2, 3, 4, 5, 6].map(h => '<option value="' + h + '"' + (st.dayEndHour === h ? ' selected' : '') + '>' + (h === 0 ? '12 AM (midnight)' : h + ' AM') + '</option>').join('') + '</select><small>Pick a time after you close. Late-night sales then count for the right day.</small></label>' +
     '<label class="field"><span>Warn if a table hasn\u2019t paid after</span><select name="unpaidMins">' + [0, 10, 15, 20, 30, 45, 60].map(m => '<option value="' + m + '"' + (st.unpaidMins === m ? ' selected' : '') + '>' + (m ? m + ' minutes' : 'Don\u2019t warn') + '</option>').join('') + '</select><small>Counted from when the food is ready or served.</small></label></div>' +
+    (c.games ? '<h3 class="form-sub">Games and prizes</h3>' +
+    '<div class="row"><label class="field"><span>Prize for the #1 player</span><input class="input" name="prize" maxlength="60" value="' + esc(st.prize) + '" placeholder="Like Free masala tea"><small>Customers see it in the games. Leave empty for no prize.</small></label>' +
+    '<label class="field"><span>Leaderboard starts fresh</span><select name="lbPeriod"><option value="day"' + (st.lbPeriod !== 'week' ? ' selected' : '') + '>Every day, at closing time</option><option value="week"' + (st.lbPeriod === 'week' ? ' selected' : '') + '>Every week, on Monday</option></select><small>Whoever is #1 when it starts fresh wins the prize.</small></label></div>' : '') +
     '<div class="row-btns"><button class="btn-primary inline" type="submit"' + (S.savingSettings ? ' disabled' : '') + '>' + (S.savingSettings ? 'Saving\u2026' : 'Save') + '</button><button type="button" class="btn-ghost" data-action="test-print">Print a test bill</button></div>' +
     '<p class="fine left">Printing: pick your bill printer, set Margins to None, and turn off Headers and footers. The browser remembers it.</p></form>' +
+    (c.games ? lbPanelHtml() : '') +
     '<section class="panel-lite"><h3>Kitchen tickets (KOT)</h3><p class="muted" style="margin-bottom:12px">A KOT is a small slip for the cook: table, items and quantities in big letters, no prices. It uses the same printer and paper size as your bills.</p>' +
     '<div class="kot-set"><div><b>Print KOT automatically</b><small>On this device only. Prints once when an order is accepted or sent to the kitchen.</small></div>' +
     '<button type="button" class="sw" role="switch" aria-checked="' + kotAuto.get() + '" aria-label="Print KOT automatically" data-action="kot-auto"></button></div>' +
@@ -866,6 +870,46 @@ function renderDialog(focusTitle) {
 }
 function openDialog(d) { S.dialog = d; dlgAnim = true; renderDialog(true); }
 function closeDialog() { S.dialog = null; renderDialog(); }
+
+/* ---------- Game leaderboard (Settings) ----------
+   Shows who's on top today (or this week), lets staff remove a rude or fake name,
+   and lists the last winners so staff can hand over the prize and mark it given. */
+function lbFetch(pg, n) {
+  const col = collection(db, 'cafes', S.cafeId, 'scores');
+  const tidy = snap => snap.docs.map(d => Object.assign({ id: d.id }, d.data())).filter(x => !x.hidden && typeof x.score === 'number').sort((a, b) => b.score - a.score).slice(0, 10);
+  return getDocs(query(col, where('pg', '==', pg), orderBy('score', 'desc'), limit(n))).then(tidy)
+    .catch(() => getDocs(query(col, where('pg', '==', pg), limit(100))).then(tidy));
+}
+async function loadLb() {
+  if (!S.cafe) return;
+  const P = lbPeriods(S.cafe.settings);
+  S.lb = Object.assign({}, S.lb || {}, { loading: true, at: Date.now() });
+  try {
+    const cur = {}, prev = {};
+    await Promise.all(LB_GAMES.map(async ([g]) => { cur[g] = await lbFetch(P.cur + '_' + g, 15); prev[g] = (await lbFetch(P.prev + '_' + g, 5))[0] || null; }));
+    S.lb = { cur, prev, P, at: Date.now(), loading: false, err: false };
+  } catch (e) { S.lb = Object.assign(S.lb, { loading: false, err: true }); }
+  const el = $('#lb-panel'); if (el) el.outerHTML = lbPanelHtml();
+}
+function lbPanelHtml() {
+  if (S.cafe && (!S.lb || (!S.lb.loading && Date.now() - S.lb.at > 60000))) setTimeout(loadLb, 0);
+  const lb = S.lb || {}, P = lb.P || lbPeriods(S.cafe.settings), cw = P.week ? 'this week' : 'today', pw = P.week ? 'last week' : 'yesterday';
+  const prize = S.cafe.settings.prize;
+  const winners = LB_GAMES.map(([g, name]) => { const w = lb.prev && lb.prev[g]; if (!w) return '';
+    return '<li class="lb-win"><span class="lb-trophy" aria-hidden="true">\u{1F3C6}</span><span class="lb-who"><b>' + esc(w.name) + '</b><small>' + esc(name) + ' winner ' + pw + ', ' + w.score + ' points' + (w.table ? ', Table ' + w.table : '') + '</small></span>' +
+      (w.claimed ? '<span class="lb-given">\u2713 Prize given</span>' : prize ? '<button type="button" class="btn-primary inline lb-give" data-action="lb-claim" data-id="' + esc(w.id) + '">Mark prize given</button>' : '') + '</li>'; }).join('');
+  const list = (g) => { const rows = (lb.cur && lb.cur[g]) || [];
+    return rows.length ? '<ol class="lb-list">' + rows.map((x, i) => '<li><span class="lb-rank">' + (i + 1) + '</span><span class="lb-who"><b>' + esc(x.name) + '</b>' + (x.table ? '<small>Table ' + x.table + '</small>' : '') + '</span><b class="lb-score">' + x.score + '</b><button type="button" class="mini" data-action="lb-hide" data-id="' + esc(x.id) + '" aria-label="Remove ' + esc(x.name) + '">Remove</button></li>').join('') + '</ol>'
+      : '<p class="muted lb-empty">' + (lb.loading ? 'Loading\u2026' : lb.err ? 'Couldn\u2019t load. Tap Refresh.' : 'No scores ' + cw + ' yet.') + '</p>'; };
+  return '<section class="panel-lite" id="lb-panel"><div class="sec-head" style="margin:0 0 6px"><h3>Game leaderboard</h3><button type="button" class="btn-ghost" data-action="lb-refresh">Refresh</button></div>' +
+    '<p class="muted" style="margin-bottom:12px">' + (prize ? 'Prize: <b>' + esc(prize) + '</b>. ' : 'No prize set. Add one above to get more customers playing. ') + 'The winner shows a gold card with a ticking clock on their phone. Check the name, then tap Mark prize given.</p>' +
+    (winners ? '<ul class="lb-wins">' + winners + '</ul>' : '') +
+    '<div class="lb-cols">' + LB_GAMES.map(([g, name]) => '<div><h4 class="lb-h">' + esc(name) + ', ' + cw + '</h4>' + list(g) + '</div>').join('') + '</div></section>';
+}
+async function lbSet(id, data, msg) {
+  try { await updateDoc(doc(db, 'cafes', S.cafeId, 'scores', id), data); toast(msg); } catch (e) { toast('That didn\u2019t save. Check your internet.'); }
+  loadLb();
+}
 
 /* ---------- Printing ---------- */
 function doPrint(kind, html, pageCss) { printOut(kind, html, pageCss); }
@@ -1078,6 +1122,9 @@ document.addEventListener('click', async e => {
       openDialog({ type: 'actions', title: 'Bill #' + b.billNo, items: [['reprint', 'Print again', ' data-id="' + esc(b.id) + '"'], ...(b.void ? [] : [['open-void', 'Cancel this bill', ' data-id="' + esc(b.id) + '"', true]])] });
       break;
     }
+    case 'lb-refresh': loadLb(); break;
+    case 'lb-hide': lbSet(id, { hidden: true }, 'Removed from the leaderboard.'); break;
+    case 'lb-claim': lbSet(id, { claimed: true }, 'Marked as given. Enjoy!'); break;
     case 'print-kot': { const o = S.orders.find(x => x.id === id); closeDialog(); if (o) { kotPrintedOnce(S.cafeId, o.id); printKot(o, S.cafe, { reprint: o.status !== 'new' && o.status !== 'preparing' }); } break; }
     case 'kot-auto': kotAuto.set(!kotAuto.get()); render(); toast(kotAuto.get() ? 'KOT will print by itself on this device when an order goes to the kitchen.' : 'Auto KOT is off on this device.'); break;
     case 'test-kot': printKot({ id: 'test01', type: 'table', table: 1, name: '', items: [{ name: 'Masala tea', qty: 2 }, { name: 'Chicken puffs', qty: 1 }], note: 'Less sugar', prepMins: S.cafe.settings.prepMins, createdAt: Date.now() }, S.cafe); break;
@@ -1226,7 +1273,8 @@ document.addEventListener('submit', async e => {
     if (!(gstPct >= 0 && gstPct <= 28)) { toast('GST must be between 0 and 28%.'); return; }
     const settings = {
       prepMins, gstPct, address: f.address.value.trim().slice(0, 120), phone: f.phone.value.trim().slice(0, 30), gstin: f.gstin.value.trim().toUpperCase().slice(0, 20), footer: f.footer.value.trim().slice(0, 80), paper: f.paper.value === '58' ? '58' : '80',
-      dayEndHour: Math.max(0, Math.min(6, parseInt(f.dayEndHour.value, 10) || 0)), unpaidMins: Math.max(0, Math.min(120, parseInt(f.unpaidMins.value, 10) || 0))
+      dayEndHour: Math.max(0, Math.min(6, parseInt(f.dayEndHour.value, 10) || 0)), unpaidMins: Math.max(0, Math.min(120, parseInt(f.unpaidMins.value, 10) || 0)),
+      prize: f.prize ? f.prize.value.trim().slice(0, 60) : S.cafe.settings.prize, lbPeriod: f.lbPeriod ? (f.lbPeriod.value === 'week' ? 'week' : 'day') : S.cafe.settings.lbPeriod
     };
     S.savingSettings = true; S.settingsDirty = false; render();
     try { await writeCafe({ name: name.slice(0, 60), tables, settings }, 'Settings saved.'); } catch (err) {}

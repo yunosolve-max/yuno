@@ -51,7 +51,8 @@ function checkPassDone() {
   const os = p.ids.map(id => S.orders[id]);
   if (os.some(o => !o)) return;
   if (os.every(o => o.paid || o.status === 'rejected' || o.status === 'cancelled') && os.some(o => o.paid)) {
-    p.done = Date.now(); savePass(p); S.table = null;
+    p.done = Date.now(); savePass(p); S.table = null; S.cart = {}; S.note = '';
+    if (S.overlay === 'cart' || S.overlay === 'dish') { S.overlay = null; renderOverlay(); }
   }
 }
 const canOrder = () => S.demo || passState() === 'ok';
@@ -191,6 +192,7 @@ function dishSheet() {
   if (m.allergens.length) facts.push([ml ? '\u0D05\u0D1F\u0D19\u0D4D\u0D19\u0D3F\u0D2F\u0D35' : 'Contains', m.allergens.map(k => { const a = ALLERGENS.find(x => x[0] === k); return a ? (ml ? a[2] : a[1]) : k; }).join(', ')]);
   const q = S.cart[m.id] || 0, A = S.hAnswer;
   const act = !m.available ? '<p class="sold-tag" style="display:inline-block">Sold out today</p>'
+    : !canOrder() ? '<p class="pass-note">' + esc(NO_PASS_MSG[passState()]) + '</p>'
     : q ? '<div class="dish-act"><div class="step"><button type="button" data-action="dec" data-id="' + esc(m.id) + '" aria-label="Remove one">\u2212</button><span aria-live="polite">' + q + '</span><button type="button" data-action="inc" data-id="' + esc(m.id) + '" aria-label="Add one more">+</button></div><button type="button" class="btn-primary inline" data-action="close">Done</button></div>'
     : '<button type="button" class="btn-primary" data-action="inc" data-id="' + esc(m.id) + '">Add to order, ' + rupee(m.price) + '</button>';
   return '<div class="overlay" data-action="close-bg"><div class="sheet dish-sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-h"><div class="grabber" aria-hidden="true"></div>' +
@@ -229,10 +231,20 @@ function placedSheet() {
   return '<div class="overlay" data-action="close-bg"><div class="sheet placed-sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-h"><div class="confetti" aria-hidden="true">' + confetti + '</div>' +
     '<div class="placed-check" aria-hidden="true"><svg viewBox="0 0 52 52"><circle cx="26" cy="26" r="24"/><path d="M15 27l7 7 15-16"/></svg></div>' +
     '<h2 id="sheet-h" tabindex="-1">The cafe has your order!</h2><p class="placed-sub">We\u2019ll show it here as soon as the cafe accepts it and the food is ready.</p>' +
-    '<button type="button" class="btn-primary" data-action="games">\u{1F3AE} Play a game while you wait</button>' +
+    (S.cafe && S.cafe.games ? '<button type="button" class="btn-primary" data-action="games">' + GAME_ICON_W + ' Play a game while you wait</button>' : '') +
     '<button type="button" class="btn-soft placed-later" data-action="close">See my order</button></div></div>';
 }
-function openGames() { import('./games.js').then(g => g.openGames({ cafeId })).catch(() => toast('Couldn\u2019t open the games. Check your internet.')); }
+// Leaderboard scores count only from phones that scanned a table QR in the last 4 hours (paid or not).
+function openGames() {
+  if (!S.cafe || !S.cafe.games) return;
+  const p = readPass(), inCafe = !!p && Date.now() - p.at < 4 * 3600000;
+  import('./games.js').then(g => g.openGames({ cafeId, demo: !!S.demo, inCafe, table: p ? p.t : 0, settings: S.cafe ? S.cafe.settings : {} }))
+    .catch(() => toast('Couldn\u2019t open the games. Check your internet.'));
+}
+// The game button: a controller with a little crown, and "Play & win" when the cafe offers a prize.
+const GAME_ICON_W = '<svg class="pg-ico" viewBox="0 0 32 32" aria-hidden="true"><path d="M10.5 12h11a6.5 6.5 0 0 1 6.3 8.1l-.6 2.4a3.3 3.3 0 0 1-5.6 1.5L19.7 22h-7.4l-1.9 2a3.3 3.3 0 0 1-5.6-1.5l-.6-2.4A6.5 6.5 0 0 1 10.5 12z" fill="currentColor"/></svg>';
+const GAME_ICON = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M10.5 12h11a6.5 6.5 0 0 1 6.3 8.1l-.6 2.4a3.3 3.3 0 0 1-5.6 1.5L19.7 22h-7.4l-1.9 2a3.3 3.3 0 0 1-5.6-1.5l-.6-2.4A6.5 6.5 0 0 1 10.5 12z" fill="currentColor"/><path d="M9.5 15.6v4M7.5 17.6h4" stroke="var(--gi-on,#fff)" stroke-width="1.8" stroke-linecap="round"/><circle cx="21" cy="16.4" r="1.4" fill="var(--gi-on,#fff)"/><circle cx="24" cy="19" r="1.4" fill="var(--gi-on,#fff)"/><path d="M12.5 9.6 14 5.8l2 2.4 2-2.4 1.5 3.8z" fill="#D6E96E" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>';
+function gameBtn() { if (!S.cafe || !S.cafe.games) return ''; const pz = S.cafe && S.cafe.settings.prize; return '<button type="button" class="c-games' + (pz ? ' win' : '') + '" data-action="games" data-key="games" aria-label="' + (pz ? 'Play games and win' : 'Games') + '">' + GAME_ICON + '<span>' + (pz ? 'Play & win' : 'Play') + '</span></button>'; }
 
 /* ---------- Order again ---------- */
 const LAST_KEY = 'yumotap:' + cafeId + ':last';
@@ -242,7 +254,7 @@ function lastOrder() {
   return last.items.filter(x => byId[x.id] && byId[x.id].available).map(x => ({ id: x.id, qty: Math.max(1, Math.min(20, x.qty | 0)), name: byId[x.id].name }));
 }
 function reorderCard() {
-  const items = lastOrder(); if (!items.length) return '';
+  const items = lastOrder(); if (!items.length || !canOrder()) return '';
   return '<section class="reorder"><div><b>Order again?</b><span>' + items.map(i => i.qty + '\u00D7 ' + esc(i.name)).join(', ') + '</span></div><button type="button" class="btn-primary inline" data-action="reorder" data-key="reorder">Add</button></section>';
 }
 
@@ -252,6 +264,7 @@ function itemRow(m, cat) {
   const [tone, svg] = iconFor(cat);
   let act;
   if (!m.available) act = '<span class="sold-tag">Sold out</span>';
+  else if (!canOrder()) act = '';
   else if (q) act = '<div class="step"><button type="button" data-action="dec" data-id="' + esc(m.id) + '" data-key="dec-' + esc(m.id) + '" aria-label="Remove one ' + esc(m.name) + '">\u2212</button><span aria-live="polite">' + q + '</span><button type="button" data-action="inc" data-id="' + esc(m.id) + '" data-key="inc-' + esc(m.id) + '" aria-label="Add one more ' + esc(m.name) + '">+</button></div>';
   else act = '<button type="button" class="btn-add" data-action="inc" data-id="' + esc(m.id) + '" data-key="inc-' + esc(m.id) + '" aria-label="Add ' + esc(m.name) + '">' + PLUS + '</button>';
   const photo = S.photos[m.id], idA = esc(m.id);
@@ -309,8 +322,8 @@ function renderMain() {
   const tableChip = S.demo
     ? '<button type="button" class="chip-table" data-action="open-table" data-key="table">' + (S.table ? 'Table ' + S.table : 'Pick table') + '</button>'
     : canOrder() && S.table ? '<span class="chip-table">Table ' + S.table + '</span>' : '<span class="chip-table off">Scan to order</span>';
-  let h = '<header class="c-head' + (festNow(c.brand) ? ' fest' : '') + '"' + (festNow(c.brand) ? ' data-deco="' + festNow(c.brand).deco + '"' : '') + '><div class="c-top">' + tableChip + '<span class="c-top-r"><button type="button" class="c-games" data-action="games" data-key="games" aria-label="Games">\u{1F3AE}</button><button type="button" class="c-call" data-action="call" data-key="call">' + BELL + 'Call waiter</button></span></div>' +
-    (c.brand.logo ? '<img class="c-logo" src="' + c.brand.logo + '" alt="' + esc(c.name) + ' logo">' : '') + '<h1 class="c-cafe">' + esc(c.name) + '</h1>' + (festNow(c.brand) ? '<p class="c-fest"><span aria-hidden="true">' + festNow(c.brand).deco + '</span> ' + festNow(c.brand).msg + '</p>' : '') + '<p class="c-sub">' + (view === 'menu' ? 'Tap + to add food. Tap Place order when you\u2019re done.' : 'Thanks for your order! You can follow it here.') + '</p></header>';
+  let h = '<header class="c-head' + (festNow(c.brand) ? ' fest' : '') + '"' + (festNow(c.brand) ? ' data-deco="' + festNow(c.brand).deco + '"' : '') + '><div class="c-top">' + tableChip + '<span class="c-top-r">' + gameBtn() + '' + (canOrder() ? '<button type="button" class="c-call" data-action="call" data-key="call" aria-label="Call a waiter">' + BELL + '<span class="cc-t">Call waiter</span></button>' : '') + '</span></div>' +
+    (c.brand.logo ? '<img class="c-logo" src="' + c.brand.logo + '" alt="' + esc(c.name) + ' logo">' : '') + '<h1 class="c-cafe">' + esc(c.name) + '</h1>' + (festNow(c.brand) ? '<p class="c-fest"><span aria-hidden="true">' + festNow(c.brand).deco + '</span> ' + festNow(c.brand).msg + '</p>' : '') + '<p class="c-sub">' + (view === 'menu' ? (canOrder() ? 'Tap + to add food. Tap Place order when you\u2019re done.' : 'Have a look at our menu.') : 'Thanks for your order! You can follow it here.') + '</p></header>';
   if (!canOrder() && view === 'menu') h += '<p class="banner pass-banner">' + NO_PASS_MSG[passState()] + '</p>';
   if (!c.acceptingOrders) h += '<p class="banner">The cafe isn\u2019t taking phone orders right now. You can still see the menu. Please order at the counter.</p>';
 
@@ -323,7 +336,7 @@ function renderMain() {
       if (cats.length > 1) h += '<nav class="c-tiles" aria-label="Menu sections">' + cats.map((cat, i) => { const n = c.menu.filter(m => m.cat === cat.id).length; return '<button type="button" class="c-tile t-' + TONES[i % 4] + '" data-action="cat" data-cat="' + esc(cat.id) + '" data-key="tile-' + esc(cat.id) + '"><b>' + esc(cat.name) + '</b><span>' + n + (n === 1 ? ' dish' : ' dishes') + '</span></button>'; }).join('') + '</nav>';
       if (S.demo) h += '<p class="banner demo-banner">This is a demo cafe. Orders aren\u2019t sent anywhere, so try everything: order, ask about dishes, play games.</p>';
       if (count === 0) h += reorderCard();
-      if (mine.some(o => ['new', 'preparing'].includes(o.status))) h += '<button type="button" class="games-banner" data-action="games"><span aria-hidden="true">\u{1F3AE}</span><span><b>Waiting for your food?</b> Play a quick game with your table.</span></button>';
+      if (c.games && mine.some(o => ['new', 'preparing'].includes(o.status))) h += '<button type="button" class="games-banner" data-action="games"><span class="gb-ico">' + GAME_ICON + '</span><span><b>Waiting for your food?</b> ' + (c.settings.prize ? 'Top the cafe leaderboard and win ' + esc(c.settings.prize) + '.' : 'Play a quick game with your table.') + '</span></button>';
       if (cats.length > 1) h += '<nav class="cats" aria-label="Jump to a section">' + cats.map(cat => '<button type="button" data-action="cat" data-cat="' + esc(cat.id) + '" data-key="cat-' + esc(cat.id) + '" aria-pressed="' + (S.activeCat === cat.id) + '">' + esc(cat.name) + '</button>').join('') + '</nav>';
       h += cats.map(cat => '<section class="cat-sec" id="sec-' + esc(cat.id) + '"><h2 class="cat-h">' + esc(cat.name) + '</h2><ul class="items">' +
         c.menu.filter(m => m.cat === cat.id).map(m => itemRow(m, cat)).join('') + '</ul></section>').join('');
@@ -337,8 +350,12 @@ function renderMain() {
     }
   } else {
     h += '<div class="status" aria-live="polite">' + payPanel() + mine.slice(0, 3).map(statusCard).join('') +
-      (mine.some(o => ['new', 'preparing', 'ready'].includes(o.status)) ? '<button type="button" class="games-banner" data-action="games"><span aria-hidden="true">\u{1F3AE}</span><span><b>Play while you wait</b> Memory, quiz, tap race and more, alone or with friends.</span></button>' : '') +
-      '<div class="st-btns"><button type="button" class="btn-primary" data-action="more" data-key="more">Order more food</button><button type="button" class="btn-soft" data-action="call" data-key="call2">Call a waiter</button></div></div>';
+      (c.games && mine.some(o => ['new', 'preparing', 'ready'].includes(o.status)) ? '<button type="button" class="games-banner" data-action="games"><span class="gb-ico">' + GAME_ICON + '</span><span><b>Play while you wait</b> Tea Stack, Chai Rush, quiz and more. Get on the cafe leaderboard!</span></button>' : '') +
+      (canOrder()
+        ? '<div class="st-btns"><button type="button" class="btn-primary" data-action="more" data-key="more">Order more food</button><button type="button" class="btn-soft" data-action="call" data-key="call2">Call a waiter</button></div>'
+        : '<section class="visit-done"><div class="vd-check" aria-hidden="true">' + (passState() === 'paid' ? '\u2713' : '\u{1F4F7}') + '</div>' +
+          '<h2>' + (passState() === 'paid' ? 'Bill paid. Thank you!' : 'Scan to order') + '</h2><p>' + esc(NO_PASS_MSG[passState()]) + '</p>' +
+          '<button type="button" class="btn-soft" data-action="more" data-key="more">See the menu</button></section>') + '</div>';
     h += '<p class="c-foot">Ordering by <b>YUNO</b></p>';
   }
   app.innerHTML = h;
@@ -482,7 +499,7 @@ document.addEventListener('click', e => {
       if (sec) sec.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
       break;
     }
-    case 'inc': if (byId[id] && byId[id].available) { S.cart[id] = Math.min(20, (S.cart[id] || 0) + 1); refreshCart(true); } break;
+    case 'inc': if (!canOrder()) { toast(NO_PASS_MSG[passState()]); break; } if (byId[id] && byId[id].available) { S.cart[id] = Math.min(20, (S.cart[id] || 0) + 1); refreshCart(true); } break;
     case 'dec': if (S.cart[id]) { S.cart[id]--; if (S.cart[id] <= 0) delete S.cart[id]; } refreshCart(false); break;
     case 'open-cart': openOverlay('cart', t); break;
     case 'open-table': if (S.demo) openOverlay('table', t); break;
@@ -501,7 +518,7 @@ document.addEventListener('click', e => {
     case 'call': callWaiter(); break;
     case 'dish': openDish(id, t); break;
     case 'games': if (S.overlay) { S.overlay = null; renderOverlay(); } openGames(); break;
-    case 'reorder': { lastOrder().forEach(x => { S.cart[x.id] = Math.min(20, (S.cart[x.id] || 0) + x.qty); }); refreshCart(true); toast('Added your last order. Change anything you like.'); break; }
+    case 'reorder': if (!canOrder()) break; { lastOrder().forEach(x => { S.cart[x.id] = Math.min(20, (S.cart[x.id] || 0) + x.qty); }); refreshCart(true); toast('Added your last order. Change anything you like.'); break; }
     case 'hlang': S.hLang = t.dataset.l === 'ml' ? 'ml' : 'en'; S.hAnswer = null; if (helper) helper.stopSpeaking(); withFocus(renderOverlay); break;
     case 'ask': if (helper) helper.unlockSpeech(); helperSay('', t.dataset.q, []); break;
     case 'say': if (helper && S.hAnswer) { helper.unlockSpeech(); helper.speak(S.hAnswer.text, S.hLang); } break;
