@@ -6,7 +6,7 @@ import {
 } from './fb.js';
 import {
   $, esc, rupee, money2, shortCode, toMs, ago, ls, toast, unlockAudio, chime, alarm, stopAlarm, alarmPlaying, audioReady,
-  cleanCafe, newId, BRAND_SVG, dayKey, fmtTime, fmtDateTime, iconFor, bizDay, bizStart, payAmount, shortMoney, processPhoto, ALLERGENS, SPICE, loginError } from './common.js';
+  cleanCafe, newId, BRAND_SVG, dayKey, fmtTime, fmtDateTime, iconFor, bizDay, bizStart, payAmount, shortMoney, processPhoto, ALLERGENS, SPICE, loginError, printOut, printKot, kotAuto, kotPrintedOnce } from './common.js';
 
 const params = new URLSearchParams(location.search);
 const VIEWS = ['tables', 'bills', 'menu', 'settings'];
@@ -171,6 +171,8 @@ function subscribeDay() {
         if (was === 'preparing' && o.status === 'ready') toast(keyTitle(groupKey(o), o) + ': order is ready to serve.');
         if (was === 'new' && o.status === 'preparing' && o.decidedBy === 'kitchen') toast(keyTitle(groupKey(o), o) + ': the kitchen accepted the order.');
         if (was === 'new' && o.status === 'rejected' && o.decidedBy === 'kitchen') toast(keyTitle(groupKey(o), o) + ': the kitchen rejected the order' + (o.cancelReason ? ' (' + o.cancelReason + ')' : '') + '.');
+        // Auto KOT: print once when an order goes to the kitchen (accepted, or typed in at the counter).
+        if (o.status === 'preparing' && (!was || was === 'new') && kotAuto.get() && kotPrintedOnce(S.cafeId, o.id)) printKot(o, S.cafe);
       });
       if (ring && S.soundOn) alarm();
     }
@@ -496,7 +498,8 @@ function cartHtml() {
     : (os.length ? '' : '<p class="empty cart-empty">Tap items on the left to start an order.</p>');
   const foot = '<div class="cart-foot">' +
     (d.items.length ? '<button type="button" class="btn-primary" data-action="send">Send to kitchen, ' + rupee(draftTotal) + '</button>' : '') +
-    (billTotal ? '<button type="button" class="btn-bill' + (d.items.length ? ' secondary' : '') + '" data-action="bill-pos">Bill ' + rupee(billTotal) + '</button>' : '') + '</div>';
+    (billTotal && !d.items.length ? '<p class="qb-h">One tap: save and print the bill, ' + rupee(quickTotal(key)) + '</p><div class="qb-row">' + PAY.map(([k, l]) => '<button type="button" class="qb" data-action="quick-bill" data-p="' + k + '"' + (S.quickBusy ? ' disabled' : '') + '>' + l + '</button>').join('') + '</div>' : '') +
+    (billTotal ? '<button type="button" class="btn-bill' + (d.items.length ? ' secondary' : ' quiet') + '" data-action="bill-pos">' + (d.items.length ? 'Bill ' + rupee(billTotal) : 'Discount, GST or split bill') + '</button>' : '') + '</div>';
   return '<div class="cart-head"><div><h2>' + esc(keyTitle(key)) + '</h2><p class="muted">' + (os.length ? plural(os.length, 'order') + ' open' : 'No orders yet') + '</p></div>' +
     (os.length ? '<button type="button" class="btn-ghost" data-action="pos-menu">More</button>' : '') +
     '<button type="button" class="x cart-close" data-action="cart-close" aria-label="Close order">\u2715</button></div>' +
@@ -692,6 +695,11 @@ function settingsView() {
     '<label class="field"><span>Warn if a table hasn\u2019t paid after</span><select name="unpaidMins">' + [0, 10, 15, 20, 30, 45, 60].map(m => '<option value="' + m + '"' + (st.unpaidMins === m ? ' selected' : '') + '>' + (m ? m + ' minutes' : 'Don\u2019t warn') + '</option>').join('') + '</select><small>Counted from when the food is ready or served.</small></label></div>' +
     '<div class="row-btns"><button class="btn-primary inline" type="submit"' + (S.savingSettings ? ' disabled' : '') + '>' + (S.savingSettings ? 'Saving\u2026' : 'Save') + '</button><button type="button" class="btn-ghost" data-action="test-print">Print a test bill</button></div>' +
     '<p class="fine left">Printing: pick your bill printer, set Margins to None, and turn off Headers and footers. The browser remembers it.</p></form>' +
+    '<section class="panel-lite"><h3>Kitchen tickets (KOT)</h3><p class="muted" style="margin-bottom:12px">A KOT is a small slip for the cook: table, items and quantities in big letters, no prices. It uses the same printer and paper size as your bills.</p>' +
+    '<div class="kot-set"><div><b>Print KOT automatically</b><small>On this device only. Prints once when an order is accepted or sent to the kitchen.</small></div>' +
+    '<button type="button" class="sw" role="switch" aria-checked="' + kotAuto.get() + '" aria-label="Print KOT automatically" data-action="kot-auto"></button></div>' +
+    '<div class="row-btns"><button type="button" class="btn-ghost" data-action="test-kot">Print a test KOT</button></div>' +
+    '<p class="fine left">To print one KOT by hand, open a table, tap \u22EF on the order, then Print KOT. To print with no pop-up window, YUNO can set up Chrome on this computer for silent printing.</p></section>' +
     '<section class="panel-lite"><h3>Table QR codes</h3><label class="field"><span>Website address inside the codes</span><input class="input" id="qr-base" data-key="qr-base" value="' + esc(S.qrBase) + '" inputmode="url" autocomplete="off"><small>Set this to your own domain before printing real stickers. Printed codes can\u2019t change.</small></label>' +
     '<p class="qr-link">Table 1 opens: <span id="qr-sample">' + esc(tableLink(1)) + '</span></p><button type="button" class="btn-primary inline" data-action="print-qr">Print QR codes for ' + plural(c.tables, 'table') + '</button></section>' +
     '<section class="panel-lite"><h3>Account</h3><p class="muted" style="margin-bottom:10px">Signed in as ' + esc(S.user && S.user.email) + '</p>' +
@@ -857,15 +865,7 @@ function openDialog(d) { S.dialog = d; dlgAnim = true; renderDialog(true); }
 function closeDialog() { S.dialog = null; renderDialog(); }
 
 /* ---------- Printing ---------- */
-function doPrint(kind, html, pageCss) {
-  $('#print-area').innerHTML = html;
-  let st = document.getElementById('page-style');
-  if (!st) { st = document.createElement('style'); st.id = 'page-style'; document.head.appendChild(st); }
-  st.textContent = '@media print{' + pageCss + '}';
-  document.body.dataset.print = kind;
-  setTimeout(() => window.print(), 50);
-}
-window.addEventListener('afterprint', () => { delete document.body.dataset.print; });
+function doPrint(kind, html, pageCss) { printOut(kind, html, pageCss); }
 function receiptHead() {
   const st = S.cafe.settings;
   return (S.cafe.brand.logo ? '<p class="r-c"><img class="r-logo" src="' + S.cafe.brand.logo + '" alt=""></p>' : '') + '<p class="r-c r-big">' + esc(S.cafe.name) + '</p>' + (st.address ? '<p class="r-c">' + esc(st.address) + '</p>' : '') + (st.phone ? '<p class="r-c">Phone: ' + esc(st.phone) + '</p>' : '') + (st.gstin ? '<p class="r-c">GSTIN: ' + esc(st.gstin) + '</p>' : '');
@@ -916,12 +916,22 @@ async function sendDraft() {
 function openBill(orderIds, label) {
   openDialog({ type: 'bill', orderIds, label, skip: {}, discount: '', gstPct: S.cafe.settings.gstPct, pay: '', busy: false, err: '' });
 }
-async function saveBill(print) {
-  const d = S.dialog;
-  if (!d.pay) { d.err = 'Choose how the customer paid.'; renderDialog(); return; }
+// One-tap bill: no pop-up. Uses the normal GST, no discount, and prints straight away.
+function quickTotal(key) { return billCalc({ orderIds: billable(key).map(o => o.id), skip: {}, discount: '', gstPct: S.cafe.settings.gstPct }).total; }
+async function quickBill(pay) {
+  if (S.quickBusy || !S.pos) return;
+  const os = billable(S.pos.key); if (!os.length) return;
+  S.quickBusy = true; render();
+  await saveBill(true, { orderIds: os.map(o => o.id), label: keyTitle(S.pos.key), skip: {}, discount: '', gstPct: S.cafe.settings.gstPct, pay, busy: false, err: '' });
+  S.quickBusy = false; render();
+}
+async function saveBill(print, quick) {
+  const d = quick || S.dialog;
+  const show = () => { if (quick) { if (d.err) toast(d.err); } else renderDialog(); };
+  if (!d.pay) { d.err = 'Choose how the customer paid.'; show(); return; }
   const b = billCalc(d);
-  if (!b.orders.length) { d.err = 'Tick at least one order.'; renderDialog(); return; }
-  d.busy = true; d.err = ''; renderDialog();
+  if (!b.orders.length) { d.err = 'Tick at least one order.'; show(); return; }
+  d.busy = true; d.err = ''; if (!quick) renderDialog();
   const types = [...new Set(b.orders.map(o => o.type))];
   try {
     const billRef = doc(collection(db, 'cafes', S.cafeId, 'bills'));
@@ -949,14 +959,14 @@ async function saveBill(print) {
       b.orders.forEach(o => tx.update(orderRef(o.id), { billId: billRef.id, updatedAt: serverTimestamp() }));
       return normBill(billRef.id, Object.assign({}, data, { createdAt: Date.now() }));
     });
-    closeDialog();
-    toast('Bill #' + saved.billNo + ' saved.');
+    if (!quick) closeDialog();
+    toast('Bill #' + saved.billNo + ' saved' + (quick ? ', ' + rupee(saved.total) + ' by ' + PAY.find(p => p[0] === saved.pay)[1] : '') + '.');
     if (print) printReceipt(saved);
     if (S.view === 'pos' && S.pos) setTimeout(() => { if (S.pos && !openOrders(S.pos.key).length && !draftFor(S.pos.key).items.length) { S.view = 'tables'; S.pos = null; render(); } }, 400);
   } catch (e) {
     d.busy = false;
     d.err = e && e.code === 'already-billed' ? 'One of these orders was already billed on another screen.' : e && e.code === 'cancelled' ? 'One of these orders was cancelled.' : 'The bill didn\u2019t save. Check your internet and try again.';
-    renderDialog();
+    show();
   }
 }
 async function moveOrders(orderIds, table) {
@@ -997,6 +1007,7 @@ document.addEventListener('click', async e => {
     case 'send': sendDraft(); break;
     case 'cart-open': S.cartOpen = true; render(); break;
     case 'cart-close': S.cartOpen = false; render(); break;
+    case 'quick-bill': quickBill(t.dataset.p); break;
     case 'bill-pos': { const os = billable(S.pos.key); if (os.length) openBill(os.map(o => o.id), keyTitle(S.pos.key)); break; }
     case 'pick-time': S.acceptMins[id] = parseInt(t.dataset.m, 10); render(); break;
     case 'accept': { const mins = S.acceptMins[id] || S.cafe.settings.prepMins; decideOrder(id, { status: 'preparing', prepMins: mins, acceptedAt: serverTimestamp() }, 'Accepted. Sent to the kitchen, ready in ' + mins + ' min.'); break; }
@@ -1008,7 +1019,7 @@ document.addEventListener('click', async e => {
       ...(billable(S.pos.key).length ? [['bill-pos', 'Bill']] : [])] }); break;
     case 'order-menu': {
       const o = S.orders.find(x => x.id === id); if (!o) break;
-      openDialog({ type: 'actions', title: 'Order ' + shortCode(o.id), items: [['edit-order', 'Edit items', ' data-id="' + esc(o.id) + '"'], ['open-cancel', o.status === 'new' ? 'Reject order' : 'Cancel order', ' data-id="' + esc(o.id) + '"', true]] });
+      openDialog({ type: 'actions', title: 'Order ' + shortCode(o.id), items: [['edit-order', 'Edit items', ' data-id="' + esc(o.id) + '"'], ['print-kot', 'Print KOT (kitchen ticket)', ' data-id="' + esc(o.id) + '"'], ['open-cancel', o.status === 'new' ? 'Reject order' : 'Cancel order', ' data-id="' + esc(o.id) + '"', true]] });
       break;
     }
     case 'move-table': openDialog({ type: 'tablepick', mode: 'move' }); break;
@@ -1064,6 +1075,9 @@ document.addEventListener('click', async e => {
       openDialog({ type: 'actions', title: 'Bill #' + b.billNo, items: [['reprint', 'Print again', ' data-id="' + esc(b.id) + '"'], ...(b.void ? [] : [['open-void', 'Cancel this bill', ' data-id="' + esc(b.id) + '"', true]])] });
       break;
     }
+    case 'print-kot': { const o = S.orders.find(x => x.id === id); closeDialog(); if (o) { kotPrintedOnce(S.cafeId, o.id); printKot(o, S.cafe, { reprint: o.status !== 'new' && o.status !== 'preparing' }); } break; }
+    case 'kot-auto': kotAuto.set(!kotAuto.get()); render(); toast(kotAuto.get() ? 'KOT will print by itself on this device when an order goes to the kitchen.' : 'Auto KOT is off on this device.'); break;
+    case 'test-kot': printKot({ id: 'test01', type: 'table', table: 1, name: '', items: [{ name: 'Masala tea', qty: 2 }, { name: 'Chicken puffs', qty: 1 }], note: 'Less sugar', prepMins: S.cafe.settings.prepMins, createdAt: Date.now() }, S.cafe); break;
     case 'reprint': { const b = S.bills.concat(S.dayBills || []).find(x => x.id === id); closeDialog(); if (b) printReceipt(b); break; }
     case 'open-void': openDialog({ type: 'void', billId: id, reason: '', busy: false, err: '' }); break;
     case 'confirm-void': {

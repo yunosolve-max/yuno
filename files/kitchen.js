@@ -3,7 +3,7 @@ import {
   db, auth, doc, getDoc, updateDoc, collection, query, where, orderBy, onSnapshot, Timestamp, serverTimestamp, runTransaction,
   onAuthStateChanged, signInWithEmailAndPassword, signOut
 } from './fb.js';
-import { $, esc, toMs, ls, toast, unlockAudio, alarm, chime, stopAlarm, alarmPlaying, audioReady, cleanCafe, BRAND_SVG, fmtTime, shortCode, bizDay, bizStart, loginError } from './common.js';
+import { $, esc, toMs, ls, toast, unlockAudio, alarm, chime, stopAlarm, alarmPlaying, audioReady, cleanCafe, BRAND_SVG, fmtTime, shortCode, bizDay, bizStart, loginError, printKot, kotAuto, kotPrintedOnce } from './common.js';
 
 const params = new URLSearchParams(location.search);
 const S = { phase: 'auth', user: null, cafeId: '', cafe: null, orders: [], soundOn: ls.get('yumotap:ksound', true), pending: {}, fresh: {}, acceptMins: {}, rejectOpen: null, stockOpen: false, stockBusy: {}, loginErr: '', loginBusy: false };
@@ -48,6 +48,8 @@ function subscribeOrders() {
         if (was === 'new' && o.status === 'cancelled' && o.cancelledBy === 'customer') toast(who(o) + ' cancelled their order.');
         if ((was === 'preparing' || was === 'ready') && o.status === 'cancelled') toast(who(o) + ': the counter cancelled this order. Stop cooking.');
         if (S.rejectOpen === o.id && o.status !== 'new') S.rejectOpen = null;
+        // Auto KOT: print once when an order goes to cooking (accepted here or at the counter, or typed in at the counter).
+        if (o.status === 'preparing' && (!was || was === 'new') && kotAuto.get() && kotPrintedOnce(S.cafeId, o.id)) printKot(o, S.cafe);
       });
       if (ring && S.soundOn) alarm(); else if (soft && S.soundOn) chime();
     }
@@ -165,7 +167,7 @@ function ticket(o) {
     '<p class="k-meta">Order ' + shortCode(o.id) + ', ' + (o.decidedBy === 'kitchen' ? 'accepted in the kitchen' : o.decidedBy === 'counter' ? 'accepted at the counter' : 'sent from the counter') + ' at ' + fmtTime(o.acceptedAt || o.createdAt) + '</p>' +
     '<ul class="k-lines">' + o.items.map(i => '<li><b>' + i.qty + '</b><span>' + esc(i.name) + '</span></li>').join('') + '</ul>' +
     (o.note ? '<p class="k-note">' + esc(o.note) + '</p>' : '') +
-    '<div class="k-act"><button type="button" class="mini" data-action="more" data-id="' + idA + '"' + (busy ? ' disabled' : '') + '>+5 min</button>' +
+    '<div class="k-act"><button type="button" class="mini k-kot" data-action="kot" data-id="' + idA + '">Print KOT</button><button type="button" class="mini" data-action="more" data-id="' + idA + '"' + (busy ? ' disabled' : '') + '>+5 min</button>' +
     '<button type="button" class="k-ready" data-action="ready" data-id="' + idA + '"' + (busy ? ' disabled' : '') + '>Ready</button></div></article>';
 }
 function render() {
@@ -192,7 +194,7 @@ function render() {
   const cooking = S.orders.filter(o => o.status === 'preparing').sort((a, b) => (a.acceptedAt || a.createdAt) - (b.acceptedAt || b.createdAt));
   const done = S.orders.filter(o => o.status === 'ready').sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 8);
   $('#top-cafe').innerHTML = (S.cafe.brand.logo ? '<img class="top-logo" src="' + S.cafe.brand.logo + '" alt="">' : '') + esc(S.cafe.name);
-  $('#top-tools').innerHTML = (fresh.length ? '<span class="k-count k-count-new">' + fresh.length + ' new</span>' : '') + '<span class="k-count">' + cooking.length + ' to cook</span><button type="button" class="btn-ghost' + (S.stockOpen ? ' on' : '') + '" data-action="stock">Sold out</button><button type="button" class="btn-ghost" data-action="sound">' + (S.soundOn ? 'Sound on' : 'Sound off') + '</button>';
+  $('#top-tools').innerHTML = (fresh.length ? '<span class="k-count k-count-new">' + fresh.length + ' new</span>' : '') + '<span class="k-count">' + cooking.length + ' to cook</span><button type="button" class="btn-ghost' + (S.stockOpen ? ' on' : '') + '" data-action="stock">Sold out</button><button type="button" class="btn-ghost' + (kotAuto.get() ? ' on' : '') + '" data-action="kot-auto" title="Print a kitchen ticket by itself for each new order">' + (kotAuto.get() ? 'Auto KOT on' : 'Auto KOT off') + '</button><button type="button" class="btn-ghost" data-action="sound">' + (S.soundOn ? 'Sound on' : 'Sound off') + '</button>';
   app.innerHTML = '<div class="wrap page">' + (S.soundOn && !audioReady() ? '<button type="button" class="sound-banner" data-action="unlock">Tap here to turn on the order alarm</button>' : '') +
     (S.stockOpen ? stockHtml() : '') +
     (fresh.length ? '<section class="k-sec"><h3 class="k-h new">New orders: accept or reject</h3><div class="k-grid">' + fresh.map(newCard).join('') + '</div></section>' : '') +
@@ -222,6 +224,8 @@ document.addEventListener('click', async e => {
     case 'reject-back': S.rejectOpen = null; render(); break;
     case 'reject-confirm': decide(id, { status: 'rejected', cancelledBy: 'cafe', cancelReason: String(t.dataset.r || 'Other').slice(0, 100) }, 'Order rejected. The customer and counter can see it.'); break;
     case 'ready': setOrder(id, { status: 'ready', readyAt: serverTimestamp() }, 'Marked ready. The counter can see it.'); break;
+    case 'kot': { const o = S.orders.find(x => x.id === id); if (o) { kotPrintedOnce(S.cafeId, o.id); printKot(o, S.cafe); } break; }
+    case 'kot-auto': kotAuto.set(!kotAuto.get()); render(); toast(kotAuto.get() ? 'A KOT will print by itself for every order that goes to cooking.' : 'Auto KOT is off on this screen.'); break;
     case 'stock': S.stockOpen = !S.stockOpen; render(); break;
     case 'stock-toggle': toggleStock(id); break;
     case 'undo': setOrder(id, { status: 'preparing' }); break;

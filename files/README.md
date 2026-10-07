@@ -85,3 +85,26 @@ and the cafe gets the order on the counter screen.
 - The QR opens /menu.html?cafe=demo&table=1. If no cafe called "demo" exists, a built-in sample cafe is shown:
   orders there go nowhere and play out by themselves (accepted, cooking, ready). Create a real "demo" cafe in Admin
   if you also want orders to reach a demo counter and kitchen.
+
+## Kitchen tickets (KOT)
+
+A KOT is a slip for the cook: table, items and quantities in big letters, no prices.
+It prints on the same thermal printer and paper size (58 or 80 mm) as bills.
+
+- **Print by hand, kitchen screen:** every cooking ticket has a **Print KOT** button.
+- **Print by hand, counter:** open the table, tap **⋯** on the order, then **Print KOT**.
+- **Print automatically:** kitchen screen top bar → **Auto KOT on**, or counter
+  **Settings → Kitchen tickets (KOT)** → switch on. This is per device, so turn it on
+  only on the computer connected to the printer. Each order prints once, even after a refresh.
+- **Print with no pop-up window (recommended for auto KOT):** on the Windows computer with
+  the printer, make the printer the Windows default, then make a Chrome shortcut whose
+  Target ends with `--kiosk-printing`, for example
+  `"C:\Program Files\Google\Chrome\Application\chrome.exe" --kiosk-printing https://yuno-puce.vercel.app/kitchen`.
+  Close every Chrome window and open YUNO from that shortcut. Tickets now print silently.
+
+## One-tap bill
+
+Open a table. When all its food has been sent to the kitchen, three big buttons show at the bottom:
+**Cash**, **UPI**, **Card**. One tap saves the bill with that payment, using your normal GST and
+no discount, and prints it straight away. For a discount, a different GST or splitting the bill,
+tap **Discount, GST or split bill** underneath.

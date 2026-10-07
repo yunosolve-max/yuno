@@ -667,6 +667,11 @@ details.finished summary::-webkit-details-marker{display:none}
 .receipt .r-item{flex:1;min-width:0;word-break:break-word}
 .receipt .r-q{width:3.5em;text-align:right}
 .receipt .r-a{width:6em;text-align:right}
+.receipt .kot-who{font-size:2em;font-weight:800;letter-spacing:.02em;margin:2px 0}
+.receipt .kot-line{display:flex;gap:3mm;align-items:baseline;font-size:1.35em;font-weight:700;margin:1.2mm 0;line-height:1.2}
+.receipt .kot-line b{min-width:2.2em}
+.receipt .kot-line span{flex:1;min-width:0;word-break:break-word}
+.receipt .kot-note{font-size:1.15em;font-weight:700;border:1.5px solid #000;padding:1.5mm;margin:1mm 0}
 .qr-grid.print{grid-template-columns:repeat(3,1fr);gap:8mm;margin:0}
 .qr-grid.print .qr-card{border:1.5px dashed #999}
 @media print{
@@ -1089,3 +1094,17 @@ body.g-open{overflow:hidden}
   @media (max-width:500px){ .board{grid-template-columns:1fr} .col{min-height:0} }
 }
 .demo-banner{background:var(--sky);color:#17181D}
+
+/* KOT setting row */
+.kot-set{display:flex;align-items:center;gap:14px;justify-content:space-between;padding:12px 14px;border-radius:16px;background:var(--surface-2);margin-bottom:12px}
+.kot-set b{display:block;font-weight:700}
+.kot-set small{display:block;color:var(--muted);font-size:13px;margin-top:2px}
+.k-act .k-kot{padding:10px 15px;border:1px solid var(--hair)}
+
+/* One-tap bill buttons (save + print in one touch) */
+.qb-h{font-size:13px;font-weight:600;color:var(--muted);margin:2px 2px 8px}
+.qb-row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px}
+.qb{border:0;border-radius:16px;padding:16px 8px;font:inherit;font-size:17px;font-weight:800;cursor:pointer;background:var(--lime);color:#17181D;transition:transform .12s ease}
+.qb:active{transform:scale(.96)}
+.qb:disabled{opacity:.5;cursor:default}
+.btn-bill.quiet{background:transparent;color:var(--ink);border:1px solid var(--hair);padding:12px;font-size:14px}

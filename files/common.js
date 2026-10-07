@@ -333,3 +333,60 @@ export function loginError(err) {
   if (c === 'auth/user-disabled') return 'This login has been switched off in Firebase.';
   return 'Couldn\u2019t sign in' + (c ? ' (' + c.replace('auth/', '') + ')' : '') + '. Please try again.';
 }
+
+/* ---------- Printing (bills, reports, kitchen tickets) ----------
+   One print at a time. Several jobs (two KOTs at once, say) wait in a queue
+   and print one after another, so nothing gets lost. */
+const printJobs = [];
+let printing = false;
+function nextPrint() {
+  if (printing || !printJobs.length) return;
+  printing = true;
+  const { kind, html, pageCss } = printJobs.shift();
+  let area = document.getElementById('print-area');
+  if (!area) { area = document.createElement('div'); area.id = 'print-area'; area.setAttribute('aria-hidden', 'true'); document.body.appendChild(area); }
+  area.innerHTML = html;
+  let st = document.getElementById('page-style');
+  if (!st) { st = document.createElement('style'); st.id = 'page-style'; document.head.appendChild(st); }
+  st.textContent = '@media print{' + pageCss + '}';
+  document.body.dataset.print = kind;
+  setTimeout(() => {
+    let done = false;
+    const finish = () => { if (done) return; done = true; window.removeEventListener('afterprint', finish); delete document.body.dataset.print; printing = false; setTimeout(nextPrint, 400); };
+    window.addEventListener('afterprint', finish);
+    try { window.print(); } catch (e) {}
+    if (!('onafterprint' in window)) setTimeout(finish, 1500); // older browsers without afterprint
+  }, 60);
+}
+export function printOut(kind, html, pageCss) { printJobs.push({ kind, html, pageCss: pageCss || '@page{margin:0}' }); nextPrint(); }
+
+// KOT: Kitchen Order Ticket. Big table name and quantities, no prices.
+export function orderLabel(o) { return o.type === 'table' ? 'TABLE ' + o.table : (o.type === 'parcel' ? 'PARCEL' : 'COUNTER'); }
+export function kotHtml(o, cafe, opts) {
+  opts = opts || {};
+  const paper = cafe && cafe.settings && cafe.settings.paper === '58' ? '58' : '80';
+  const qty = (o.items || []).reduce((s, i) => s + (parseInt(i.qty, 10) || 0), 0);
+  const when = o.acceptedAt || o.createdAt || Date.now();
+  return '<div class="receipt kot w' + paper + '">' +
+    '<p class="r-c r-b">KOT' + (opts.reprint ? ' (REPRINT)' : '') + '</p>' +
+    '<p class="r-c r-small">' + esc(cafe ? cafe.name : '') + '</p><hr>' +
+    '<p class="r-c kot-who">' + esc(orderLabel(o)) + '</p>' +
+    (o.name ? '<p class="r-c r-b">' + esc(o.name) + '</p>' : '') +
+    '<p class="r-row"><span>Order ' + esc(shortCode(o.id)) + '</span><span>' + esc(fmtTime(when)) + '</span></p>' +
+    (o.prepMins ? '<p class="r-row"><span>Ready in</span><span>' + o.prepMins + ' min</span></p>' : '') + '<hr>' +
+    (o.items || []).map(i => '<p class="kot-line"><b>' + (parseInt(i.qty, 10) || 1) + ' x</b><span>' + esc(i.name) + '</span></p>').join('') + '<hr>' +
+    (o.note ? '<p class="kot-note">NOTE: ' + esc(o.note) + '</p><hr>' : '') +
+    '<p class="r-row r-small"><span>' + qty + ' item' + (qty === 1 ? '' : 's') + '</span><span>' + esc(fmtDateTime(Date.now())) + '</span></p></div>';
+}
+export function printKot(o, cafe, opts) { printOut('receipt', kotHtml(o, cafe, opts), '@page{margin:0}'); }
+
+// Auto-print is a setting for this device only (the one plugged into the kitchen printer).
+// We remember which orders already printed here, so a refresh never prints them twice.
+export const kotAuto = { get: () => !!ls.get('yumotap:kotauto', false), set: (v) => ls.set('yumotap:kotauto', !!v) };
+export function kotPrintedOnce(cafeId, id) {
+  const key = 'yumotap:kotdone:' + cafeId, list = ls.get(key, []);
+  const arr = Array.isArray(list) ? list : [];
+  if (arr.includes(id)) return false;
+  arr.push(id); ls.set(key, arr.slice(-300));
+  return true;
+}
