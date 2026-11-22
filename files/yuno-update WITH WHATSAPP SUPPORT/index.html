@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>YUNO | QR table ordering for cafes and tea stalls</title>
+<meta name="description" content="Customers scan the QR code on their table and order from their phone. The kitchen gets it instantly. Made for cafes and tea stalls.">
+<meta name="theme-color" content="#FAF8F3">
+<meta name="color-scheme" content="light">
+<meta property="og:title" content="YUNO: every table becomes a menu">
+<meta property="og:description" content="QR table ordering, kitchen screen, bills and sales for cafes and tea stalls. No app to install.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='9' fill='%236F5CE6'/><path d='M9 14.5h12v3.8a5.7 5.7 0 0 1-5.7 5.7h-.6A5.7 5.7 0 0 1 9 18.3z' fill='%23fff'/><path d='M21 15.8h1.4a2.6 2.6 0 0 1 0 5.2H21' fill='none' stroke='%23fff' stroke-width='2'/><path d='M12.6 10.9a3.4 3.4 0 0 1 4.8 0M10.4 8.4a6.6 6.6 0 0 1 9.2 0' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Urbanist:wght@400;500;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Urbanist:wght@400;500;600;700;800&display=swap"></noscript>
+<link rel="stylesheet" href="/app.css">
+<style>
+/* Landing page. Colours come from the app itself (app.css), so the site and product feel like one brand. */
+:where(:root){--ink:#17181D;--muted:#5E5E6C;--surface:#fff;--hair:#E2E0EA;--base:#F4F3F8;--on-ink:#fff}
+:where(body){margin:0;font-family:Urbanist,system-ui,sans-serif;background:var(--base);color:var(--ink);font-size:16px;line-height:1.5}
+:where(.lp) :where(h1,h2,h3,p,ol){margin-top:0}
+:where(.btn-primary){display:inline-flex;align-items:center;justify-content:center;padding:16px 26px;border:0;border-radius:999px;background:var(--ink);color:var(--on-ink);font:inherit;font-weight:700;cursor:pointer;text-decoration:none}
+:where(.btn-ghost){padding:10px 16px;border-radius:999px;font-weight:700;text-decoration:none}
+:where(.brand){display:inline-flex;align-items:center;gap:8px;font-weight:800;color:#6F5CE6}
+:where(.brand) svg{width:1.2em;height:1.2em}
+body.lp{background:#FAF8F3}
+/* The home page is designed in light colours. The app's shared styles switch to light text in dark mode,
+   so lock this page's colours to light; otherwise headings vanish on phones set to dark mode. */
+html{background:#FAF8F3;color-scheme:light}
+body.lp{color-scheme:light;color:#17181D;--ink:#17181D;--muted:#5E5E6C;--surface:#fff;--surface-2:#F6F5FA;--hair:#E2E0EA;--hair-strong:rgba(23,24,29,.18);--base:#F4F3F8;--on-ink:#fff}
+.lp{--w:1180px;--lime:#D6E96E;--violet:#6F5CE6;--display:"Bricolage Grotesque",Urbanist,sans-serif}
+.lp h1,.lp h2,.lp h3{font-family:var(--display);font-optical-sizing:auto}
+.lp-eyebrow{display:inline-flex;align-items:center;gap:8px;padding:7px 14px 7px 8px;margin-bottom:22px;border-radius:999px;background:#fff;border:1px solid var(--hair);font-size:14px;font-weight:700}
+.lp-eyebrow i{width:22px;height:22px;border-radius:50%;background:#E3DEFB;display:grid;place-items:center;font-style:normal;font-size:12px}
+.lp-hero h1 em{font-style:normal;color:var(--violet)}
+.lp a{color:inherit}
+.lp a.btn-primary{color:var(--on-ink)}
+.lp a.wa{color:#fff}
+.lp-wrap{max-width:var(--w);margin:0 auto;padding:0 clamp(18px,4vw,40px)}
+.lp-nav{display:flex;align-items:center;gap:14px;padding-top:18px;padding-bottom:18px}
+.lp-nav .brand{font-size:24px}
+.lp-nav .sp{margin-left:auto}
+.lp-nav a.btn-ghost{text-decoration:none}
+.lp-hero{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);gap:clamp(24px,5vw,64px);align-items:center;padding-top:clamp(24px,6vw,72px);padding-bottom:clamp(40px,7vw,90px)}
+.lp-hero h1{font-size:clamp(48px,8vw,104px);font-weight:800;letter-spacing:-.05em;line-height:.92;margin-bottom:24px;text-wrap:balance}
+.lp-hero p.lead{font-size:clamp(18px,2vw,21px);color:#3F3F4B;max-width:30em;line-height:1.5;margin-bottom:28px}
+.lp-cta{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.lp-cta a{text-decoration:none}
+.lp-cta .btn-primary{width:auto;padding:17px 28px}
+.lp-cta .wa{display:inline-flex;align-items:center;gap:8px;padding:16px 22px;border-radius:999px;background:#1FAF55;color:#fff;font-weight:700}
+.lp-small{font-size:14px;color:var(--muted);margin-top:16px}
+/* The hero visual: a table tent with a real QR code, and the menu it opens */
+.lp-stage{position:relative;min-height:540px}
+.lp-tent{position:absolute;left:0;bottom:18px;width:min(250px,48%);padding:20px 18px 18px;border-radius:26px;background:#fff;color:#17181D;text-align:center;box-shadow:0 30px 60px -28px rgba(30,24,70,.45);transform:rotate(-4deg);z-index:2}
+.lp-tent .t-table{font-size:13px;font-weight:700;color:#686876}
+.lp-tent .t-scan{font-size:20px;font-weight:600;letter-spacing:-.02em;margin:2px 0 10px}
+.lp-tent .t-qr svg{width:100%;height:auto;display:block}
+.t-full{display:block;width:100%;margin-top:12px;padding:10px;border:0;border-radius:999px;background:#17181D;color:#fff;font:inherit;font-weight:700;font-size:14px;cursor:pointer}
+.pitch-link{display:block;margin-top:18px;text-align:left;padding:0;border:0;background:none;color:var(--ink);font:inherit;font-weight:700;font-size:16px;text-decoration:underline;text-underline-offset:4px;cursor:pointer}
+.lp-pitch{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:20px;background:rgba(18,16,34,.6)}
+.lp-pitch[hidden]{display:none}
+.pitch-box{width:min(440px,100%);max-height:100%;overflow:auto;padding:26px 24px 24px;border-radius:32px;background:#fff;color:#17181D;text-align:center}
+.pitch-brand{display:flex;align-items:center;justify-content:center;gap:8px;font-weight:800;font-size:20px;letter-spacing:.01em}
+.pitch-brand svg{width:26px;height:26px;color:#6F5CE6}
+.pitch-box h2{font-size:28px;font-weight:600;letter-spacing:-.03em;margin:10px 0 14px}
+.pitch-qr{width:min(320px,80vw);margin:0 auto}
+.pitch-qr svg{width:100%;height:auto;display:block}
+.pitch-sub{color:#686876;font-size:15px;margin:14px 0 18px;line-height:1.5}
+.lp-tent .t-by{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:10px;font-weight:800;font-size:14px;letter-spacing:-.03em}
+.lp-tent .t-by svg{width:18px;height:18px;color:#6F5CE6}
+.lp-phone{position:absolute;right:0;top:0;width:min(300px,62%);aspect-ratio:9/18.5;border-radius:44px;border:10px solid #17181D;background:var(--base);overflow:hidden;box-shadow:0 40px 80px -30px rgba(30,24,70,.5)}
+.ph{height:100%;padding:14px 12px;display:flex;flex-direction:column;gap:10px;font-size:12px}
+.ph-hero{padding:14px;border-radius:22px;background:linear-gradient(165deg,#E3DEFB,#fff 85%);color:#17181D}
+.ph-top{display:flex;justify-content:space-between;margin-bottom:12px}
+.ph-chip{background:#17181D;color:#fff;border-radius:999px;padding:4px 10px;font-weight:700;font-size:11px}
+.ph-call{background:#fff;border-radius:999px;padding:4px 10px;font-weight:700;font-size:11px}
+.ph-name{font-size:26px;font-weight:500;letter-spacing:-.05em;line-height:1}
+.ph-tiles{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.ph-tiles span{padding:16px 10px 8px;border-radius:14px;font-weight:700;color:#17181D}
+.ph-item{display:flex;gap:9px;align-items:center;padding:9px;border-radius:16px;background:var(--surface)}
+.ph-pic{width:40px;height:40px;border-radius:12px;flex:none;display:grid;place-items:center;font-size:20px}
+.ph-item b{display:block;font-size:13px}
+.ph-item i{font-style:normal;color:var(--muted);font-weight:700}
+.ph-add{margin-left:auto;width:30px;height:30px;border-radius:50%;background:#D6E96E;display:grid;place-items:center;font-weight:700;color:#17181D}
+.ph-bar{margin-top:auto;display:flex;align-items:center;justify-content:space-between;padding:6px 6px 6px 14px;border-radius:999px;background:#17181D;color:#fff}
+.ph-bar b{font-size:14px}
+.ph-go{background:#D6E96E;color:#17181D;border-radius:999px;padding:8px 12px;font-weight:700}
+/* Steps: a scroll-driven sequence. Heading stays pinned, a rail fills, each step lights up as it reaches the middle of the screen. */
+.lp-sec{padding:clamp(44px,7vw,90px) 0}
+.lp-sec p.sub{font-size:18px;color:#3F3F4B;max-width:36em;margin-bottom:34px}
+.lp-how{background:#fff;border:1px solid var(--hair);border-radius:clamp(28px,4vw,48px);margin:0 clamp(8px,1.5vw,20px)}
+.how-grid{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:clamp(28px,6vw,80px);align-items:start}
+.how-head{position:sticky;top:96px}
+.how-meter{display:flex;align-items:baseline;gap:8px;font-family:var(--display);font-weight:800;letter-spacing:-.04em}
+.how-meter b{font-size:clamp(64px,8vw,112px);line-height:.9;color:var(--violet)}
+.how-meter span{font-size:24px;color:#686876}
+.how-label{margin-top:8px;font-size:18px;font-weight:700;min-height:1.5em}
+.lp-steps{--p:1;position:relative;list-style:none;margin:0;padding:0 0 0 56px;display:grid;gap:clamp(18px,8vh,90px);counter-reset:s}
+.lp-steps::before,.lp-steps::after{content:"";position:absolute;left:19px;top:20px;bottom:20px;width:2px;border-radius:2px;background:#E2E0EA}
+.lp-steps::after{background:var(--violet);transform-origin:top;transform:scaleY(var(--p))}
+.lp-steps li{position:relative;padding:26px 24px 28px;border-radius:28px;background:#F4F3F8;border:1px solid #E2E0EA;color:#17181D;counter-increment:s;transition:opacity .5s,transform .5s cubic-bezier(.2,.8,.2,1),background .5s,border-color .5s,color .5s}
+.lp-steps li::before{content:counter(s,decimal-leading-zero);position:absolute;left:-56px;top:22px;z-index:1;display:grid;place-items:center;width:40px;height:40px;border-radius:50%;background:#fff;border:2px solid #E2E0EA;color:#686876;font-weight:800;font-size:14px;transition:background .4s,color .4s,border-color .4s,transform .4s}
+.lp-steps b{display:block;font-family:var(--display);font-size:clamp(24px,2.6vw,32px);font-weight:700;letter-spacing:-.035em;margin-bottom:8px}
+.lp-steps span{color:#3F3F4B;font-size:17px;line-height:1.55}
+.lp-steps li.on{background:var(--violet);color:#fff;border-color:var(--violet)}
+.lp-steps li.on span{color:#fff}
+.lp-steps li.on::before{background:var(--violet);border-color:var(--violet);color:#fff;transform:scale(1.1)}
+.motion .lp-steps li:not(.on){opacity:.8;transform:scale(.97)}
+/* Features in mixed sizes */
+.lp-feat{display:grid;grid-template-columns:repeat(6,1fr);gap:14px}
+.lp-f{padding:26px 24px;border-radius:30px;color:#17181D;display:flex;flex-direction:column;gap:8px;min-height:200px}
+.lp-f h3{font-size:26px;font-weight:700;letter-spacing:-.035em;line-height:1.05}
+.lp-f p{font-size:16px;line-height:1.45}
+.lp-f .ico{font-size:34px;line-height:1}
+.f-a{grid-column:span 4;background:#fff;border:1px solid var(--hair)}
+.f-b{grid-column:span 2;background:#ABA0F7}
+.f-c{grid-column:span 2;background:#B9CFEE}
+.f-d{grid-column:span 2;background:#F5E9A9}
+.f-e{grid-column:span 2;background:#fff;border:1px solid var(--hair)}
+.f-f{grid-column:span 3;background:#fff;border:1px solid var(--hair)}
+
+.f-g{grid-column:span 3;background:#fff;border:1px solid var(--hair)}
+.lp-ml{font-size:20px;font-weight:700}
+/* Owner promises */
+.lp-prom{display:grid;grid-template-columns:repeat(3,1fr);gap:28px;border-top:1px solid var(--hair);padding-top:30px}
+.lp-prom b{display:block;font-size:20px;font-weight:600;margin-bottom:6px}
+.lp-prom span{color:#3F3F4B}
+/* Final call to action */
+.lp-final{display:grid;grid-template-columns:auto 1fr;gap:clamp(20px,4vw,48px);align-items:center;padding:clamp(28px,4vw,44px);border-radius:36px;background:linear-gradient(150deg,#5B47D6,#8E7BF0 80%);color:#fff;box-shadow:0 30px 60px -30px rgba(70,50,190,.6)}
+.lp-final h2{color:#fff}
+.lp-final p.sub{color:rgba(255,255,255,.86)}
+.lp-final .pitch-link{color:#fff}
+.lp-final .lp-phone-line,.lp-final .lp-phone-line a{color:#fff}
+.lp-final .t-qr{box-shadow:0 18px 40px -18px rgba(20,10,80,.6)}
+.lp-final .btn-primary{background:#17181D;color:#fff}
+.lp-final .t-qr{width:180px;aspect-ratio:1;padding:12px;border-radius:20px;background:#fff;box-sizing:border-box}
+.lp-final .t-qr svg{width:100%;height:auto;display:block}
+.lp-final h2{margin-bottom:10px}
+.lp-foot{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:center;padding-top:30px;padding-bottom:40px;color:var(--muted);font-size:14px}
+.lp-foot .brand{font-size:18px}
+.lp-foot a{text-decoration:none;font-weight:600}
+.lp-cta .wa svg{flex:none}
+/* Scroll motion, switched on by the script (class "motion" on <html>). Without it everything simply shows. */
+@keyframes rise{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:none}}
+.motion .lp-hero>div>*{animation:rise .8s cubic-bezier(.2,.8,.2,1) both}
+.motion .lp-hero>div>*:nth-child(2){animation-delay:.08s}.motion .lp-hero>div>*:nth-child(3){animation-delay:.16s}.motion .lp-hero>div>*:nth-child(4){animation-delay:.24s}.motion .lp-hero>div>*:nth-child(5){animation-delay:.32s}.motion .lp-hero>div>*:nth-child(6){animation-delay:.4s}
+.motion .lp-stage{animation:rise 1s .2s cubic-bezier(.2,.8,.2,1) both}
+.motion .rv{opacity:0;transform:translateY(34px) scale(.98)}
+.motion .rv.in{opacity:1;transform:none;transition:opacity .7s,transform .8s cubic-bezier(.2,.8,.2,1);transition-delay:var(--d,0ms)}
+.lp-phone-line{margin-top:16px;font-size:18px;font-weight:600}
+.lp-phone-line a{color:var(--ink);font-weight:800;text-decoration:none;border-bottom:2px solid #1FAF55;white-space:nowrap}
+.wa-float{position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom,0px));z-index:40;display:grid;place-items:center;width:60px;height:60px;border-radius:50%;background:#1FAF55;color:#fff;box-shadow:0 14px 30px -10px rgba(16,90,45,.6)}
+.wa-float:focus-visible{outline:3px solid var(--ink);outline-offset:3px}
+@media (max-width:980px){
+  .lp-feat{grid-template-columns:1fr 1fr}
+  .f-a,.f-b,.f-c,.f-d,.f-e,.f-f,.f-g{grid-column:span 1}
+  .f-a,.f-f,.f-g{grid-column:span 2}
+}
+@media (max-width:760px){
+  .lp-hero{grid-template-columns:1fr}
+  .how-grid{grid-template-columns:1fr}
+  .how-head{position:static}
+  .how-meter,.how-label{display:none}
+  .lp-steps{padding-left:50px;gap:16px}
+  .lp-steps li{padding:22px 20px 24px}
+  .lp-stage{min-height:0;display:flex;justify-content:center}
+  .lp-phone{position:relative;width:min(290px,80%);aspect-ratio:9/15.5}
+  .lp-stage{flex-direction:column;align-items:center;gap:28px}
+  .lp-tent{position:static;transform:none;width:min(300px,88%);order:-1}
+  .lp-final{grid-template-columns:1fr}
+  .lp-final .t-qr{width:min(220px,70%);margin:0 auto}
+  .lp-prom{grid-template-columns:1fr;gap:18px}
+}
+@media (max-width:520px){
+  .lp-feat{grid-template-columns:1fr}
+  .lp-cta{flex-direction:column;align-items:stretch}
+  .lp-cta .btn-primary,.lp-cta .wa{justify-content:center;text-align:center}
+  .lp-hero h1{font-size:clamp(44px,13vw,60px)}
+  .lp-f{min-height:0}
+  .f-a,.f-b,.f-c,.f-d,.f-e,.f-f,.f-g{grid-column:span 1}
+  .lp-nav .btn-ghost.hide-s{display:none}
+}
+</style>
+</head>
+<body class="lp">
+<header class="lp-wrap lp-nav">
+  <a class="brand" href="/" style="text-decoration:none"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" fill="#6F5CE6"/><path d="M9 14.5h12v3.8a5.7 5.7 0 0 1-5.7 5.7h-.6A5.7 5.7 0 0 1 9 18.3z" fill="#fff"/><path d="M21 15.8h1.4a2.6 2.6 0 0 1 0 5.2H21" fill="none" stroke="#fff" stroke-width="2"/><path d="M12.6 10.9a3.4 3.4 0 0 1 4.8 0M10.4 8.4a6.6 6.6 0 0 1 9.2 0" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>YUNO</a>
+  <span class="sp"></span>
+  <a class="btn-ghost hide-s" href="#how">How it works</a>
+  <a class="btn-ghost" href="/counter">Cafe login</a>
+</header>
+
+<main>
+<section class="lp-wrap lp-hero">
+  <div>
+    <p class="lp-eyebrow"><i aria-hidden="true">&#x2615;</i>Made for cafes and tea stalls</p>
+    <h1>Every table becomes <em>a menu.</em></h1>
+    <p class="lead">Customers scan the QR code on their table, order from their own phone, and your kitchen sees it instantly. Bills, sales and a kitchen screen included.</p>
+    <div class="lp-cta">
+      <a class="btn-primary" data-demo href="/menu.html?cafe=demo&amp;table=1">Try the live demo</a>
+      <a class="wa" href="https://wa.me/919061927047?text=Hi!%20I%20saw%20YUNO%20and%20would%20like%20a%20demo%20for%20my%20cafe." target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true" width="20" height="20"><path fill="currentColor" d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.7.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3a.4.4 0 0 0 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.8 11.9 11.9 0 0 0 4.6 4c1.7.7 2.4.8 3.2.7a2.8 2.8 0 0 0 1.8-1.3 2.3 2.3 0 0 0 .2-1.3c-.1-.1-.3-.2-.5-.3z"/></svg>Chat on WhatsApp</a>
+    </div>
+    <p class="lp-small">No app to download. Works on any phone with a camera.</p>
+  </div>
+  <div class="lp-stage" aria-label="A table card with a QR code, and the menu it opens on a phone">
+    <div class="lp-phone" aria-hidden="true"><div class="ph">
+      <div class="ph-hero"><div class="ph-top"><span class="ph-chip">Table 4</span><span class="ph-call">Call waiter</span></div><div class="ph-name">Your Cafe Name</div></div>
+      <div class="ph-tiles"><span style="background:#D6E96E">Tea</span><span style="background:#B9CFEE">Coffee</span><span style="background:#ABA0F7">Snacks</span><span style="background:#F5E9A9">Sweets</span></div>
+      <div class="ph-item"><span class="ph-pic" style="background:#D6E96E">&#x1F375;</span><span><b>Masala Chai</b><i>&#8377;30</i></span><span class="ph-add">+</span></div>
+      <div class="ph-item"><span class="ph-pic" style="background:#F5E9A9">&#x1F95F;</span><span><b>Veg Puff</b><i>&#8377;25</i></span><span class="ph-add">+</span></div>
+      <div class="ph-item"><span class="ph-pic" style="background:#ABA0F7">&#x1F35F;</span><span><b>Banana Fritters</b><i>&#8377;40</i></span><span class="ph-add">+</span></div>
+      <div class="ph-bar"><span><small>3 items</small><br><b>&#8377;95</b></span><span class="ph-go">Place order</span></div>
+    </div></div>
+    <div class="lp-tent"><p class="t-table">For new shops</p><p class="t-scan">Scan to try the demo</p><div class="t-qr" data-qr></div><button type="button" class="t-full" data-pitch>Show QR full screen</button><p class="t-by"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" fill="#6F5CE6"/><path d="M9 14.5h12v3.8a5.7 5.7 0 0 1-5.7 5.7h-.6A5.7 5.7 0 0 1 9 18.3z" fill="#fff"/><path d="M21 15.8h1.4a2.6 2.6 0 0 1 0 5.2H21" fill="none" stroke="#fff" stroke-width="2"/><path d="M12.6 10.9a3.4 3.4 0 0 1 4.8 0M10.4 8.4a6.6 6.6 0 0 1 9.2 0" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>YUNO</p></div>
+  </div>
+</section>
+
+<section class="lp-sec lp-how" id="how"><div class="lp-wrap how-grid">
+  <div class="how-head">
+    <h2>What happens when a customer scans</h2>
+    <p class="sub">From the first scan to the paid bill, everyone sees the same order, live.</p>
+    <div class="how-meter" aria-hidden="true"><b id="howNum">01</b><span>/ 04</span></div>
+    <p class="how-label" id="howLabel" aria-hidden="true">Scan and order</p>
+  </div>
+  <ol class="lp-steps" id="steps">
+    <li><b>Scan and order</b><span>The menu opens on their phone with photos and prices. They tap + and place the order.</span></li>
+    <li><b>Kitchen accepts</b><span>The counter and kitchen ring. Either one taps Accept and picks a ready time.</span></li>
+    <li><b>Cook and serve</b><span>The kitchen taps Ready. The customer sees it on their phone, and plays games while they wait.</span></li>
+    <li><b>Bill and done</b><span>One tap prints the bill. Daily sales and the calendar update by themselves.</span></li>
+  </ol>
+</div></section>
+
+<section class="lp-sec"><div class="lp-wrap">
+  <h2>Everything a small cafe needs, nothing it doesn&rsquo;t</h2>
+  <p class="sub">Built around how small cafes actually work: busy evenings, shared tables, and staff on one phone.</p>
+  <div class="lp-feat">
+    <article class="lp-f f-a"><span class="ico" aria-hidden="true">&#x1F4F1;</span><h3>A menu customers enjoy</h3><p>Big buttons, food photos, Chef&rsquo;s pick and Popular badges, and an &ldquo;Order again&rdquo; button for regulars.</p></article>
+    <article class="lp-f f-b"><span class="ico" aria-hidden="true">&#x1F468;&#x200D;&#x1F373;</span><h3>Kitchen screen</h3><p>Accept or reject orders, timers for every dish, and sold-out in one tap.</p></article>
+    <article class="lp-f f-c"><span class="ico" aria-hidden="true">&#x1F4CA;</span><h3>Sales you can trust</h3><p>Daily totals, a calendar of past days, busiest hours and best sellers.</p></article>
+    <article class="lp-f f-d"><span class="ico" aria-hidden="true">&#x1F3AE;</span><h3>Games while they wait</h3><p>Memory, quiz, tap race and more, for 1 to 6 players at the table.</p></article>
+    <article class="lp-f f-e"><span class="ico" aria-hidden="true">&#x1F3A8;</span><h3>Your logo, your colours</h3><p>Your brand on the menu, bills and QR stickers, plus Onam and festival looks.</p></article>
+    <article class="lp-f f-f"><span class="ico" aria-hidden="true">&#x1F3A4;</span><h3>Ask about any dish, out loud</h3><p>Customers ask &ldquo;is it spicy?&rdquo; or &ldquo;any nuts?&rdquo; in English or <span class="lp-ml">&#x0D2E;&#x0D32;&#x0D2F;&#x0D3E;&#x0D33;&#x0D02;</span> and hear the answer, taken only from what you wrote.</p></article>
+    <article class="lp-f f-g"><span class="ico" aria-hidden="true">&#x1F9FE;</span><h3>Bills and unpaid tables</h3><p>GST bills on your thermal printer, and a warning when a table has eaten but not paid.</p></article>
+  </div>
+</div></section>
+
+<section class="lp-sec" style="padding-top:0"><div class="lp-wrap">
+  <div class="lp-prom">
+    <div><b>No app to install</b><span>Customers just scan. Staff use the phone, tablet or laptop you already have.</span></div>
+    <div><b>Works with your printer</b><span>Prints on standard 58 mm and 80 mm bill printers through the browser.</span></div>
+    <div><b>Set up in a day</b><span>We add your menu, print your table QR codes and show your staff how it works.</span></div>
+  </div>
+</div></section>
+
+<section class="lp-sec" style="padding-top:0"><div class="lp-wrap">
+  <div class="lp-final">
+    <div class="t-qr" data-qr></div>
+    <div>
+      <h2>See it on your own phone</h2>
+      <p class="sub" style="margin-bottom:22px">Scan the code or tap the button to open a real demo cafe. Order something and watch it work.</p>
+      <div class="lp-cta"><a class="btn-primary" data-demo href="/menu.html?cafe=demo&amp;table=1">Open the live demo</a><a class="wa" href="https://wa.me/919061927047?text=Hi!%20I%20saw%20YUNO%20and%20would%20like%20a%20demo%20for%20my%20cafe." target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true" width="20" height="20"><path fill="currentColor" d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.7.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3a.4.4 0 0 0 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.8 11.9 11.9 0 0 0 4.6 4c1.7.7 2.4.8 3.2.7a2.8 2.8 0 0 0 1.8-1.3 2.3 2.3 0 0 0 .2-1.3c-.1-.1-.3-.2-.5-.3z"/></svg>Book a demo on WhatsApp</a></div>
+      <p class="lp-phone-line">Call or WhatsApp <a href="tel:+919061927047">+91 90619 27047</a></p>
+      <button type="button" class="pitch-link" data-pitch>Show the QR full screen for a shop owner to scan</button>
+    </div>
+  </div>
+</div></section>
+</main>
+
+<footer class="lp-wrap lp-foot">
+  <span class="brand"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" fill="#6F5CE6"/><path d="M9 14.5h12v3.8a5.7 5.7 0 0 1-5.7 5.7h-.6A5.7 5.7 0 0 1 9 18.3z" fill="#fff"/><path d="M21 15.8h1.4a2.6 2.6 0 0 1 0 5.2H21" fill="none" stroke="#fff" stroke-width="2"/><path d="M12.6 10.9a3.4 3.4 0 0 1 4.8 0M10.4 8.4a6.6 6.6 0 0 1 9.2 0" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>YUNO</span>
+  <span>QR table ordering for cafes and tea stalls</span>
+  <span style="margin-left:auto"></span>
+  <a href="https://wa.me/919061927047?text=Hi!%20I%20saw%20YUNO%20and%20would%20like%20a%20demo%20for%20my%20cafe." target="_blank" rel="noopener">WhatsApp +91 90619 27047</a>
+  <a href="/counter">Cafe login</a>
+  <span>&copy; <span id="yr"></span> YUNO</span>
+</footer>
+
+<div class="lp-pitch" id="pitch" role="dialog" aria-modal="true" aria-labelledby="pitch-h" hidden>
+  <div class="pitch-box">
+    <p class="pitch-brand"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" fill="#6F5CE6"/><path d="M9 14.5h12v3.8a5.7 5.7 0 0 1-5.7 5.7h-.6A5.7 5.7 0 0 1 9 18.3z" fill="#fff"/><path d="M21 15.8h1.4a2.6 2.6 0 0 1 0 5.2H21" fill="none" stroke="#fff" stroke-width="2"/><path d="M12.6 10.9a3.4 3.4 0 0 1 4.8 0M10.4 8.4a6.6 6.6 0 0 1 9.2 0" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>YUNO</p>
+    <h2 id="pitch-h">Scan to try the demo</h2>
+    <div class="pitch-qr" data-qr></div>
+    <p class="pitch-sub">Open your phone camera and point it at the code.<br>The YUNO demo menu opens. No app needed.</p>
+    <button type="button" class="btn-primary inline" data-pitch-close>Close</button>
+  </div>
+</div>
+
+<a class="wa-float" href="https://wa.me/919061927047?text=Hi!%20I%20saw%20YUNO%20and%20would%20like%20a%20demo%20for%20my%20cafe." target="_blank" rel="noopener" aria-label="Chat on WhatsApp, +91 90619 27047"><svg viewBox="0 0 24 24" aria-hidden="true" width="30" height="30"><path fill="currentColor" d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.7.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3a.4.4 0 0 0 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.8 11.9 11.9 0 0 0 4.6 4c1.7.7 2.4.8 3.2.7a2.8 2.8 0 0 0 1.8-1.3 2.3 2.3 0 0 0 .2-1.3c-.1-.1-.3-.2-.5-.3z"/></svg></a>
+
+<script src="/qrcode.js"></script>
+<script>
+// WhatsApp number: +91 90619 27047. It's written directly into the links above (search for 919061927047
+// to change it), so the buttons work even if this script doesn't run.
+(function () {
+  var demo = location.origin + '/menu.html?cafe=demo&table=1';
+  function drawQR() {
+    document.querySelectorAll('[data-qr]').forEach(function (el) {
+      var qr = window.qrcode(0, 'M'); qr.addData(demo); qr.make();
+      el.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 1, scalable: true });
+      var svg = el.querySelector('svg'); if (svg) { svg.setAttribute('role', 'img'); svg.setAttribute('aria-label', 'QR code that opens the YUNO demo menu'); }
+    });
+  }
+  if (typeof window.qrcode === 'function') drawQR();
+  else { var s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js'; s.onload = drawQR; document.head.appendChild(s); }
+  var pitch = document.getElementById('pitch'), lastFocus = null;
+  function openPitch() { lastFocus = document.activeElement; pitch.hidden = false; pitch.querySelector('[data-pitch-close]').focus(); }
+  function closePitch() { pitch.hidden = true; if (lastFocus) lastFocus.focus(); }
+  document.querySelectorAll('[data-pitch]').forEach(function (b) { b.addEventListener('click', openPitch); });
+  pitch.querySelector('[data-pitch-close]').addEventListener('click', closePitch);
+  pitch.addEventListener('click', function (e) { if (e.target === pitch) closePitch(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !pitch.hidden) closePitch(); });
+  document.getElementById('yr').textContent = new Date().getFullYear();
+  // Scroll motion: features and promises rise in; the steps light up one by one as you scroll.
+  var calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var steps = document.getElementById('steps'), lis = steps.querySelectorAll('li');
+  var num = document.getElementById('howNum'), label = document.getElementById('howLabel');
+  if (calm) { lis.forEach(function (li) { li.classList.add('on'); }); return; }
+  document.documentElement.classList.add('motion');
+  function tick() {
+    var mid = innerHeight * 0.55, r = steps.getBoundingClientRect(), act = 0;
+    steps.style.setProperty('--p', Math.max(0, Math.min(1, (mid - r.top) / r.height)).toFixed(3));
+    lis.forEach(function (li, i) { var b = li.getBoundingClientRect(); if (b.top < mid) act = i; });
+    lis.forEach(function (li, i) { li.classList.toggle('on', i === act); });
+    num.textContent = '0' + (act + 1); label.textContent = lis[act].querySelector('b').textContent;
+  }
+  var q = false;
+  addEventListener('scroll', function () { if (!q) { q = true; requestAnimationFrame(function () { q = false; tick(); }); } }, { passive: true });
+  addEventListener('resize', tick); tick();
+  if ('IntersectionObserver' in window) {
+    var items = document.querySelectorAll('.lp-f, .lp-prom > div, .lp-final');
+    var seen = new IntersectionObserver(function (entries) {
+      entries.filter(function (e) { return e.isIntersecting; }).forEach(function (e, i) { e.target.style.setProperty('--d', Math.min(i, 5) * 90 + 'ms'); e.target.classList.add('in'); seen.unobserve(e.target); });
+    }, { threshold: 0.2, rootMargin: '0px 0px -6% 0px' });
+    items.forEach(function (el) { el.classList.add('rv'); seen.observe(el); });
+    setTimeout(function () { items.forEach(function (el) { if (el.getBoundingClientRect().top < innerHeight) el.classList.add('in'); }); }, 4000);
+  } else { document.documentElement.classList.remove('motion'); }
+})();
+</script>
+</body>
+</html>
