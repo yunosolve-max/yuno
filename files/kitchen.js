@@ -16,7 +16,7 @@ function normOrder(id, d) {
     items: Array.isArray(d.items) ? d.items.filter(x => x && typeof x === 'object').map(x => ({ name: String(x.name || 'Item').slice(0, 60), qty: parseInt(x.qty, 10) || 1 })) : [],
     status: String(d.status || 'new'), acceptedAt: d.acceptedAt ? toMs(d.acceptedAt) : 0, prepMins: parseInt(d.prepMins, 10) || 0,
     updatedAt: d.updatedAt ? toMs(d.updatedAt) : 0, createdAt: toMs(d.createdAt),
-    source: d.source === 'staff' ? 'staff' : 'customer', decidedBy: d.decidedBy === 'kitchen' ? 'kitchen' : d.decidedBy === 'counter' ? 'counter' : '',
+    source: d.source === 'staff' ? 'staff' : 'customer', waiter: d.source === 'waiter' && typeof d.waiterName === 'string' ? d.waiterName.slice(0, 40) : '', decidedBy: d.decidedBy === 'kitchen' ? 'kitchen' : d.decidedBy === 'counter' ? 'counter' : '',
     cancelledBy: d.cancelledBy === 'customer' ? 'customer' : (d.cancelledBy ? 'cafe' : ''), cancelReason: typeof d.cancelReason === 'string' ? d.cancelReason.slice(0, 100) : ''
   };
 }
@@ -122,7 +122,7 @@ function newCard(o) {
     : '<p class="k-ask">Ready in</p><div class="chips">' + times.map(m => '<button type="button" class="chip" data-action="k-time" data-id="' + idA + '" data-m="' + m + '" aria-pressed="' + (m === mins) + '">' + m + ' min</button>').join('') + '</div>' +
       '<div class="k-act"><button type="button" class="k-reject" data-action="reject" data-id="' + idA + '"' + dis + '>Reject</button><button type="button" class="k-accept" data-action="accept" data-id="' + idA + '"' + dis + '>Accept</button></div>';
   return '<article class="k-ticket k-new' + fc + '"' + fs + '><header><h2>' + esc(who(o)) + '</h2><span class="k-badge">New</span></header>' +
-    '<p class="k-meta">Order ' + shortCode(o.id) + ', sent ' + fmtTime(o.createdAt) + (o.source === 'staff' ? ' from the counter' : ' by the customer') + '. Waiting for kitchen or counter.</p>' +
+    '<p class="k-meta">Order ' + shortCode(o.id) + ', sent ' + fmtTime(o.createdAt) + (o.source === 'staff' ? ' from the counter' : o.waiter ? ' by waiter ' + esc(o.waiter) : ' by the customer') + '. Waiting for kitchen or counter.</p>' +
     '<ul class="k-lines">' + o.items.map(i => '<li><b>' + i.qty + '</b><span>' + esc(i.name) + '</span></li>').join('') + '</ul>' +
     (o.note ? '<p class="k-note">' + esc(o.note) + '</p>' : '') + body + '</article>';
 }

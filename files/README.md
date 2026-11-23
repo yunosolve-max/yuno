@@ -7,20 +7,23 @@ and the cafe gets the order on the counter screen.
 - `/menu.html?cafe=<cafe>&table=3`  Customer menu (what the QR code opens). Example: `/menu.html?cafe=cornercup&table=3`
 - `/<cafe>?table=3`  Short version of the same link (needs `_redirects` on Netlify)
 - `/counter`         Counter screen for cafe staff (login needed): orders, menu, QR codes, settings
-- `/admin`           Your admin page (only your admin login): create cafes and staff logins
+- `/kitchen`         Kitchen screen (staff login): accept, cook and mark orders ready
+- `/waiter`          Waiter screen (waiter login): take table orders, follow them, collect payment
+- `/admin`           Your admin page (only your admin login): create cafes, staff logins and waiter logins
 - `/`                YUNO landing page with a live-demo QR code and WhatsApp buttons
 
 ## Files
 - `fb.js`          Firebase connection (your project: yumotapit-5027e)
 - `menu.js`        Customer menu
 - `counter.js`     Counter screen
+- `waiter.js`      Waiter screen (page: `waiter.html`)
 - `admin.js`       Admin page
 - `common.js`      Shared helpers and the sample menu
 - `qrcode.js`      QR code maker (MIT license, Kazuhiko Arase)
 - `app.css`       Soft lime, lavender and sky card design
 - `firestore.rules`   Security rules to paste into Firebase
 - `_redirects`        Makes `/cornercup` open the menu page on Netlify
-- `vercel.json`       Page addresses for Vercel hosting (/admin, /counter, /kitchen, /<cafe>)
+- `vercel.json`       Page addresses for Vercel hosting (/admin, /counter, /kitchen, /waiter, /<cafe>)
 
 ## Setup (in order)
 1. Firebase > Authentication > Users > Add user: your own admin email + password. Copy your User UID.
@@ -133,3 +136,72 @@ leaderboard** and tap **Mark prize given**. Staff can also **Remove** rude or fa
 **Turning games on or off (admin only):** on the admin page, each cafe card has a **Customer games**
 switch. Off hides every game, the leaderboard and the prize from that cafe's menu and counter.
 Cafe staff can't change it. Cafes are on by default.
+
+## Which version is live?
+Open `yoursite/version.txt`. If it says **YUNO v3**, the newest files are being served. If it is a 404, they are not.
+The customer dish helper no longer has the "Tap and ask out loud" microphone button. Customers tap a question instead.
+
+## WhatsApp bills and the customer club (added November 2026)
+Off until you switch it on: admin page > the cafe's card > **WhatsApp bills and customer club**.
+
+**Bill on WhatsApp**
+- When billing, type the customer's phone number. It is **optional**, so in a rush just skip it and the bill saves as always.
+  The counter has a phone box above the Cash / UPI / Card buttons, and in the full bill window. The waiter screen has the same box.
+- After the bill saves, a window shows the message the customer will get (items, GST, total, how they paid, stamp-card progress, your offer)
+  with a green **Send on WhatsApp** button. It opens WhatsApp with the message ready, and you tap Send there.
+  On the waiter screen a green bar appears instead. Past bills can be sent from **Bills > the three dots > Send on WhatsApp**.
+
+**Customers (saved automatically, kept apart from sales)**
+- Each phone number saves one customer: name (optional), visits, total spent, last visit. Nothing else is stored.
+- The **Customers** tab (counter) sorts them into lists on its own:
+  **Come back** (not seen for 14+ days, best spenders first), **Second visit** (came once, 2+ days ago), **Regulars** (5+ visits, quiet for a week),
+  and **All** (with search). The tab shows a number badge when someone is waiting.
+- **Send to next customer** opens WhatsApp with the right message for that list, then removes them from it. **Skip** hides them for now.
+  **Mute** means never message them again (do this when someone replies STOP).
+- Counter > Settings > **Customer club**: your offer text (like "a free Masala Chai with any snack"), after how many days away to say
+  "we miss you", how long an offer is valid, and an optional **stamp card** (a reward every 5 to 15 visits).
+
+**What is automatic, and what is not**
+- Automatic: saving customers, counting visits, building the "who to message" lists, writing each message, the stamp-card count, the badge.
+- Not automatic: the final tap on **Send**. WhatsApp only sends by itself through the paid WhatsApp Business Platform
+  (Meta approval, message templates, and a small server to send them). This app does not use it, so there is no cost and no setup.
+  If your client wants fully hands-free sending later, that platform is the next step and these lists and messages can feed it.
+- Only message people who gave their number to get their bill, keep offers occasional, and honour STOP. Too many unwanted messages can get a WhatsApp number blocked.
+
+## Games switches, purchases and profit (added November 2026)
+- **Two game switches (admin page, on each cafe card):** *Entertaining games* (memory, tic-tac-toe, connect four, quiz, online rooms)
+  and *Leaderboard and prize* (Tea Stack, Chai Rush, the Top 10 and the prize). Turn either on or off on its own.
+  A cafe that had games off before keeps the leaderboard off until you switch it on.
+- **Counter > Purchases:** note what the cafe buys (ingredients, packaging, salary, rent, utilities) with the amount and how it was paid.
+  It shows **Profit this month** (sales without GST minus purchases), purchases by type, and **Cash in drawer today**
+  (cash bills minus cash purchases). Use the arrows to look at earlier months. Waiters can't see or add purchases.
+- Publish the new `firestore.rules` once for these (it adds the `expenses` rules and the leaderboard switch).
+
+## Waiter screen (added November 2026)
+Waiters get their own login and a phone-friendly screen at `/waiter`.
+
+**What a waiter can do**
+- See every table: Free, Waiting (for the counter or kitchen to accept), In kitchen, Ready, Not paid.
+- Tap a table, tap items, add a note, **Send order**. The order goes to the counter and kitchen as
+  **Waiting**, exactly like a customer's order, and shows the waiter's name ("by waiter Anu").
+  The counter or kitchen taps **Accept** (or Reject) as usual.
+- Follow each order (Waiting, In kitchen with the time left, Ready, Served). Tap **Served** when food reaches the table.
+- **Cancel** their own order while it is still Waiting (two taps).
+- Get a chime and a notice when food is ready, an order is accepted or rejected, or a table taps **Call waiter**.
+  Calls and rejected orders show under **Needs attention**.
+- See the table's bill (subtotal, GST, total) and take payment with **Cash / UPI / Card**
+  (tap twice to confirm). The bill is saved with the cafe's normal GST and shows in the counter's
+  **Bills** tab, where it can be printed. Daily sales totals update the same way as counter bills.
+
+**What a waiter can't do:** edit the menu or settings, see sales history or other bills, give discounts,
+void bills, take parcel or counter orders, or accept and reject orders.
+
+**One-time setup**
+1. Publish the new `firestore.rules` in Firebase (it adds the waiter role). Waiter screens won't work until you do.
+2. Admin page > the cafe's card > **Waiter logins**: type the waiter's name, email and a password, tap **Create waiter login**.
+   (Or **This waiter already has a login** if the email already exists in Firebase.)
+3. Give the waiter the link `https://<your-site>/waiter`, their email and password.
+4. **Waiter screen** on the admin card opens the screen for that cafe (the admin login works there too, handy for testing).
+
+A login can be both a staff login and a waiter login. Removing a waiter on the admin page stops that login
+opening the waiter screen straight away.

@@ -203,8 +203,6 @@ function dishSheet() {
     (facts.length ? '<dl class="dish-facts">' + facts.map(([k, v]) => '<div><dt>' + esc(k) + '</dt><dd>' + esc(v) + '</dd></div>').join('') + '</dl>' : '') +
     '<section class="helper" aria-label="Ask about this dish"><div class="helper-head"><h3>' + (ml ? '\u0D08 \u0D35\u0D3F\u0D2D\u0D35\u0D24\u0D4D\u0D24\u0D46\u0D15\u0D4D\u0D15\u0D41\u0D31\u0D3F\u0D1A\u0D4D\u0D1A\u0D4D \u0D1A\u0D4B\u0D26\u0D3F\u0D15\u0D4D\u0D15\u0D42' : 'Ask about this dish') + '</h3>' +
       '<div class="seg" role="group" aria-label="Language"><button type="button" data-action="hlang" data-l="en" aria-pressed="' + !ml + '">English</button><button type="button" data-action="hlang" data-l="ml" aria-pressed="' + ml + '">\u0D2E\u0D32\u0D2F\u0D3E\u0D33\u0D02</button></div></div>' +
-      (helper.canListen() ? '<button type="button" class="mic-btn' + (S.listening ? ' on' : '') + '" data-action="mic" aria-pressed="' + !!S.listening + '"><span aria-hidden="true">\u{1F3A4}</span>' +
-        (S.listening ? (ml ? '\u0D15\u0D47\u0D7E\u0D15\u0D4D\u0D15\u0D41\u0D28\u0D4D\u0D28\u0D41\u2026' : 'Listening\u2026 ask now') : (ml ? '\u0D1F\u0D3E\u0D2A\u0D4D\u0D2A\u0D4D \u0D1A\u0D46\u0D2F\u0D4D\u0D24\u0D4D \u0D1A\u0D4B\u0D26\u0D3F\u0D15\u0D4D\u0D15\u0D42' : 'Tap and ask out loud')) + '</button>' : '<p class="ha-note no-mic">' + esc(helper.noMicNote(S.hLang)) + '</p>') +
       '<div class="chips helper-qs">' + helper.QUESTIONS[ml ? 'ml' : 'en'].map(([k, l]) => '<button type="button" class="chip" data-action="ask" data-q="' + k + '">' + esc(l) + '</button>').join('') + '</div>' +
       (A ? '<div class="helper-ans" aria-live="polite">' + (A.heard ? '<p class="ha-q">\u201C' + esc(A.heard) + '\u201D</p>' : '') + '<p>' + esc(A.text) + '</p>' +
         (A.error ? '' : A.noVoice ? '<p class="ha-note">' + (ml ? '\u0D08 \u0D2B\u0D4B\u0D23\u0D3F\u0D28\u0D4D \u0D2E\u0D32\u0D2F\u0D3E\u0D33\u0D02 \u0D35\u0D3E\u0D2F\u0D3F\u0D15\u0D4D\u0D15\u0D3E\u0D7B \u0D15\u0D34\u0D3F\u0D2F\u0D3F\u0D32\u0D4D\u0D32. \u0D09\u0D24\u0D4D\u0D24\u0D30\u0D02 \u0D2E\u0D41\u0D15\u0D33\u0D3F\u0D7D \u0D15\u0D3E\u0D23\u0D3E\u0D02.' : 'This phone can\u2019t read this aloud. The answer is shown above.') + '</p>'
@@ -231,20 +229,20 @@ function placedSheet() {
   return '<div class="overlay" data-action="close-bg"><div class="sheet placed-sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-h"><div class="confetti" aria-hidden="true">' + confetti + '</div>' +
     '<div class="placed-check" aria-hidden="true"><svg viewBox="0 0 52 52"><circle cx="26" cy="26" r="24"/><path d="M15 27l7 7 15-16"/></svg></div>' +
     '<h2 id="sheet-h" tabindex="-1">The cafe has your order!</h2><p class="placed-sub">We\u2019ll show it here as soon as the cafe accepts it and the food is ready.</p>' +
-    (S.cafe && S.cafe.games ? '<button type="button" class="btn-primary" data-action="games">' + GAME_ICON_W + ' Play a game while you wait</button>' : '') +
+    (S.cafe && (S.cafe.games || S.cafe.leaderboard) ? '<button type="button" class="btn-primary" data-action="games">' + GAME_ICON_W + ' Play a game while you wait</button>' : '') +
     '<button type="button" class="btn-soft placed-later" data-action="close">See my order</button></div></div>';
 }
 // Leaderboard scores count only from phones that scanned a table QR in the last 4 hours (paid or not).
 function openGames() {
-  if (!S.cafe || !S.cafe.games) return;
+  if (!S.cafe || !(S.cafe.games || S.cafe.leaderboard)) return;
   const p = readPass(), inCafe = !!p && Date.now() - p.at < 4 * 3600000;
-  import('./games.js').then(g => g.openGames({ cafeId, demo: !!S.demo, inCafe, table: p ? p.t : 0, settings: S.cafe ? S.cafe.settings : {} }))
+  import('./games.js').then(g => g.openGames({ cafeId, games: !!S.cafe.games, leaderboard: !!S.cafe.leaderboard, demo: !!S.demo, inCafe, table: p ? p.t : 0, settings: S.cafe ? S.cafe.settings : {} }))
     .catch(() => toast('Couldn\u2019t open the games. Check your internet.'));
 }
 // The game button: a controller with a little crown, and "Play & win" when the cafe offers a prize.
 const GAME_ICON_W = '<svg class="pg-ico" viewBox="0 0 32 32" aria-hidden="true"><path d="M10.5 12h11a6.5 6.5 0 0 1 6.3 8.1l-.6 2.4a3.3 3.3 0 0 1-5.6 1.5L19.7 22h-7.4l-1.9 2a3.3 3.3 0 0 1-5.6-1.5l-.6-2.4A6.5 6.5 0 0 1 10.5 12z" fill="currentColor"/></svg>';
 const GAME_ICON = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M10.5 12h11a6.5 6.5 0 0 1 6.3 8.1l-.6 2.4a3.3 3.3 0 0 1-5.6 1.5L19.7 22h-7.4l-1.9 2a3.3 3.3 0 0 1-5.6-1.5l-.6-2.4A6.5 6.5 0 0 1 10.5 12z" fill="currentColor"/><path d="M9.5 15.6v4M7.5 17.6h4" stroke="var(--gi-on,#fff)" stroke-width="1.8" stroke-linecap="round"/><circle cx="21" cy="16.4" r="1.4" fill="var(--gi-on,#fff)"/><circle cx="24" cy="19" r="1.4" fill="var(--gi-on,#fff)"/><path d="M12.5 9.6 14 5.8l2 2.4 2-2.4 1.5 3.8z" fill="#D6E96E" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>';
-function gameBtn() { if (!S.cafe || !S.cafe.games) return ''; const pz = S.cafe && S.cafe.settings.prize; return '<button type="button" class="c-games' + (pz ? ' win' : '') + '" data-action="games" data-key="games" aria-label="' + (pz ? 'Play games and win' : 'Games') + '">' + GAME_ICON + '<span>' + (pz ? 'Play & win' : 'Play') + '</span></button>'; }
+function gameBtn() { if (!S.cafe || !(S.cafe.games || S.cafe.leaderboard)) return ''; const pz = S.cafe.leaderboard && S.cafe.settings.prize; return '<button type="button" class="c-games' + (pz ? ' win' : '') + '" data-action="games" data-key="games" aria-label="' + (pz ? 'Play games and win' : 'Games') + '">' + GAME_ICON + '<span>' + (pz ? 'Play & win' : 'Play') + '</span></button>'; }
 
 /* ---------- Order again ---------- */
 const LAST_KEY = 'yumotap:' + cafeId + ':last';
@@ -336,7 +334,7 @@ function renderMain() {
       if (cats.length > 1) h += '<nav class="c-tiles" aria-label="Menu sections">' + cats.map((cat, i) => { const n = c.menu.filter(m => m.cat === cat.id).length; return '<button type="button" class="c-tile t-' + TONES[i % 4] + '" data-action="cat" data-cat="' + esc(cat.id) + '" data-key="tile-' + esc(cat.id) + '"><b>' + esc(cat.name) + '</b><span>' + n + (n === 1 ? ' dish' : ' dishes') + '</span></button>'; }).join('') + '</nav>';
       if (S.demo) h += '<p class="banner demo-banner">This is a demo cafe. Orders aren\u2019t sent anywhere, so try everything: order, ask about dishes, play games.</p>';
       if (count === 0) h += reorderCard();
-      if (c.games && mine.some(o => ['new', 'preparing'].includes(o.status))) h += '<button type="button" class="games-banner" data-action="games"><span class="gb-ico">' + GAME_ICON + '</span><span><b>Waiting for your food?</b> ' + (c.settings.prize ? 'Top the cafe leaderboard and win ' + esc(c.settings.prize) + '.' : 'Play a quick game with your table.') + '</span></button>';
+      if ((c.games || c.leaderboard) && mine.some(o => ['new', 'preparing'].includes(o.status))) h += '<button type="button" class="games-banner" data-action="games"><span class="gb-ico">' + GAME_ICON + '</span><span><b>Waiting for your food?</b> ' + (c.leaderboard && c.settings.prize ? 'Top the cafe leaderboard and win ' + esc(c.settings.prize) + '.' : 'Play a quick game with your table.') + '</span></button>';
       if (cats.length > 1) h += '<nav class="cats" aria-label="Jump to a section">' + cats.map(cat => '<button type="button" data-action="cat" data-cat="' + esc(cat.id) + '" data-key="cat-' + esc(cat.id) + '" aria-pressed="' + (S.activeCat === cat.id) + '">' + esc(cat.name) + '</button>').join('') + '</nav>';
       h += cats.map(cat => '<section class="cat-sec" id="sec-' + esc(cat.id) + '"><h2 class="cat-h">' + esc(cat.name) + '</h2><ul class="items">' +
         c.menu.filter(m => m.cat === cat.id).map(m => itemRow(m, cat)).join('') + '</ul></section>').join('');
@@ -350,7 +348,7 @@ function renderMain() {
     }
   } else {
     h += '<div class="status" aria-live="polite">' + payPanel() + mine.slice(0, 3).map(statusCard).join('') +
-      (c.games && mine.some(o => ['new', 'preparing', 'ready'].includes(o.status)) ? '<button type="button" class="games-banner" data-action="games"><span class="gb-ico">' + GAME_ICON + '</span><span><b>Play while you wait</b> Tea Stack, Chai Rush, quiz and more. Get on the cafe leaderboard!</span></button>' : '') +
+      ((c.games || c.leaderboard) && mine.some(o => ['new', 'preparing', 'ready'].includes(o.status)) ? '<button type="button" class="games-banner" data-action="games"><span class="gb-ico">' + GAME_ICON + '</span><span><b>Play while you wait</b> ' + (c.leaderboard && c.games ? 'Tea Stack, Chai Rush, quiz and more. Get on the cafe leaderboard!' : c.leaderboard ? 'Tea Stack and Chai Rush. Get on the cafe leaderboard!' : 'Quiz, memory match and more.') + '</span></button>' : '') +
       (canOrder()
         ? '<div class="st-btns"><button type="button" class="btn-primary" data-action="more" data-key="more">Order more food</button><button type="button" class="btn-soft" data-action="call" data-key="call2">Call a waiter</button></div>'
         : '<section class="visit-done"><div class="vd-check" aria-hidden="true">' + (passState() === 'paid' ? '\u2713' : '\u{1F4F7}') + '</div>' +
@@ -522,15 +520,6 @@ document.addEventListener('click', e => {
     case 'hlang': S.hLang = t.dataset.l === 'ml' ? 'ml' : 'en'; S.hAnswer = null; if (helper) helper.stopSpeaking(); withFocus(renderOverlay); break;
     case 'ask': if (helper) helper.unlockSpeech(); helperSay('', t.dataset.q, []); break;
     case 'say': if (helper && S.hAnswer) { helper.unlockSpeech(); helper.speak(S.hAnswer.text, S.hLang); } break;
-    case 'mic': {
-      if (!helper) break;
-      if (S.listening) { helper.stopListening(); S.listening = false; withFocus(renderOverlay); break; }
-      helper.stopSpeaking(); helper.unlockSpeech();
-      S.listening = true; S.hAnswer = null; withFocus(renderOverlay);
-      helper.listen(S.hLang).then(heard => { S.listening = false; const u = helper.understand(heard); helperSay(heard.split(' | ')[0], u.topic, u.asked); })
-        .catch(err => { S.listening = false; S.hAnswer = { heard: '', text: helper.voiceError(err && err.message, S.hLang), noVoice: true, error: true }; withFocus(renderOverlay); });
-      break;
-    }
     case 'reload': location.reload(); break;
     case 'note-open': { S.noteOpen = true; renderOverlay(); const n = $('#note'); if (n) n.focus(); break; }
     case 'cancel-order': {

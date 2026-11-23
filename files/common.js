@@ -77,7 +77,7 @@ export function alarmPlaying() { return Date.now() < alarmEnd; }
 export function audioReady() { return !!(audioCtx && audioCtx.state === 'running'); }
 
 // Web names (the part of the link after the domain) that pages already use.
-export const RESERVED = ['counter', 'kitchen', 'admin', 'menu', 'index', 'css', 'js', 'api', 'qr'];
+export const RESERVED = ['counter', 'kitchen', 'waiter', 'admin', 'menu', 'index', 'css', 'js', 'api', 'qr'];
 export function slugify(name) {
   return String(name || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
     .replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
@@ -85,7 +85,7 @@ export function slugify(name) {
 export function slugProblem(slug) {
   if (!slug) return 'Add a web name.';
   if (!/^[a-z0-9][a-z0-9-]{1,39}$/.test(slug)) return 'Use 2 to 40 small letters, numbers, or dashes.';
-  if (RESERVED.some(r => slug.startsWith(r))) return 'Web names can\u2019t start with counter, kitchen, admin, or menu.';
+  if (RESERVED.some(r => slug.startsWith(r))) return 'Web names can\u2019t start with counter, kitchen, waiter, admin, or menu.';
   return '';
 }
 
@@ -122,14 +122,26 @@ export function cleanCafe(d) {
     unpaidMins: st.unpaidMins == null ? 20 : Math.max(0, Math.min(120, parseInt(st.unpaidMins, 10) || 0)),
     // Game leaderboard: the prize for the #1 player ('' = no prize), and whether it resets daily or weekly.
     prize: String(st.prize || '').slice(0, 60),
-    lbPeriod: st.lbPeriod === 'week' ? 'week' : 'day'
+    lbPeriod: st.lbPeriod === 'week' ? 'week' : 'day',
+    // Customer club (WhatsApp bills and win-back messages). The text of the offer, how long a customer must be away
+    // before we say "we miss you", the stamp card (a reward every N visits, 0 = off) and how long an offer stays valid.
+    clubOffer: String(st.clubOffer || '').slice(0, 80),
+    clubWinbackDays: [7, 14, 21, 30, 45, 60].includes(parseInt(st.clubWinbackDays, 10)) ? parseInt(st.clubWinbackDays, 10) : 14,
+    clubRewardEvery: [0, 5, 8, 10, 12, 15].includes(parseInt(st.clubRewardEvery, 10)) ? parseInt(st.clubRewardEvery, 10) : 0,
+    clubReward: String(st.clubReward || '').slice(0, 60),
+    clubValidDays: [3, 5, 7, 10, 14, 30].includes(parseInt(st.clubValidDays, 10)) ? parseInt(st.clubValidDays, 10) : 7
   };
   return {
     name: String(d.name || 'Cafe').slice(0, 60),
     tables: Math.max(1, Math.min(100, parseInt(d.tables, 10) || 10)),
     acceptingOrders: d.acceptingOrders !== false,
-    // Customer games (and the leaderboard and prize). Only the YUNO admin can switch this.
+    // Two separate switches, only the YUNO admin can change them:
+    // games = the fun games (memory, tic-tac-toe, quiz...), leaderboard = Tea Stack, Chai Rush, the Top 10 and the prize.
+    // A cafe that turned games off before the leaderboard switch existed keeps the leaderboard off too.
     games: d.games !== false,
+    // WhatsApp bills and the customer club. Off until the YUNO admin switches it on for a cafe.
+    whatsapp: d.whatsapp === true,
+    leaderboard: d.leaderboard === undefined ? d.games !== false : d.leaderboard !== false,
     categories, menu, settings, brand: cleanBrand(d.brand),
     popular: Array.isArray(d.popular) ? d.popular.filter(x => typeof x === 'string').slice(0, 5) : [],
     popularAt: typeof d.popularAt === 'string' ? d.popularAt : '',
@@ -405,3 +417,49 @@ export function lbPeriods(settings) {
   return { cur: 'd' + day, prev: 'd' + addDaysKey(day, -1), week: false };
 }
 export const LB_GAMES = [['stack', 'Tea Stack'], ['rush', 'Chai Rush']];
+
+/* ---------- WhatsApp bills and the customer club ----------
+   There is no WhatsApp account or API behind this. We write the message, and a tap on the green button
+   opens WhatsApp with it ready to send (wa.me links). Phone numbers are stored as digits with the country code. */
+export function normPhone(raw) {
+  let d = String(raw || '').replace(/\D/g, '').replace(/^0+/, '');
+  if (d.length === 10) d = '91' + d; // a plain Indian mobile number
+  return d.length >= 11 && d.length <= 15 ? d : '';
+}
+export const phoneShow = (p) => (/^91\d{10}$/.test(p) ? p.slice(2, 7) + ' ' + p.slice(7) : '+' + p);
+export const waLink = (phone, text) => 'https://wa.me/' + phone + '?text=' + encodeURIComponent(text);
+const waMoney = (n) => '\u20B9' + (Math.round((Number(n) || 0) * 100) / 100).toFixed(2).replace(/\.00$/, '');
+const PAY_NAME = { cash: 'Cash', upi: 'UPI', card: 'Card' };
+// The bill, as a WhatsApp message. o = { name, visits } (visits counts this one, for the stamp card).
+export function billMessage(cafe, b, o) {
+  o = o || {}; const st = cafe.settings, L = [];
+  L.push('*' + cafe.name + '*');
+  L.push(o.name ? 'Hi ' + o.name + '! Thanks for visiting us \u2615' : 'Thanks for visiting us \u2615');
+  L.push('');
+  L.push('Bill #' + b.billNo + (b.label ? ', ' + b.label : ''));
+  b.lines.forEach(l => L.push(l.qty + ' x ' + l.name + '   ' + waMoney(l.qty * l.price)));
+  L.push('');
+  if (b.discount || b.gst) L.push('Subtotal ' + waMoney(b.subtotal));
+  if (b.discount) L.push('Discount -' + waMoney(b.discount));
+  if (b.gst) L.push('GST ' + b.gstPct + '% ' + waMoney(b.gst));
+  L.push('*Total ' + waMoney(b.total) + '*' + (PAY_NAME[b.pay] ? ' (paid by ' + PAY_NAME[b.pay] + ')' : ''));
+  if (st.clubRewardEvery && st.clubReward && o.visits) {
+    const e = st.clubRewardEvery, r = o.visits % e;
+    L.push('');
+    L.push(r === 0 ? '\uD83C\uDF81 That was visit ' + o.visits + '! Show this message for your ' + st.clubReward + '.'
+      : 'Visit ' + r + ' of ' + e + ': ' + (e - r) + ' more for your ' + st.clubReward + ' \uD83C\uDF81');
+  }
+  if (st.clubOffer) { L.push(''); L.push('Come back within ' + st.clubValidDays + ' days and enjoy ' + st.clubOffer + '.'); }
+  if (st.address || st.phone) { L.push(''); if (st.address) L.push(st.address); if (st.phone) L.push('Call ' + st.phone); }
+  return L.join('\n');
+}
+// Messages that bring customers back. kind: 'winback' (not seen for a while), 'second' (came once), 'regular'.
+export function clubMessage(cafe, c, kind) {
+  const st = cafe.settings, hi = c.name ? 'Hi ' + c.name + ', ' : 'Hi, ', offer = st.clubOffer;
+  let t;
+  if (kind === 'regular') t = hi + 'you are one of our favourite regulars at ' + cafe.name + '! \uD83D\uDC9B Thank you for coming back again and again.' + (offer ? ' On your next visit: ' + offer + '.' : '');
+  else if (kind === 'second') t = hi + 'thank you for visiting ' + cafe.name + '! \u2615 We would love to see you again.' + (offer ? ' Visit within ' + st.clubValidDays + ' days and enjoy ' + offer + '.' : '');
+  else t = hi + 'this is ' + cafe.name + ' \u2615 We miss you!' + (offer ? ' Come back in the next ' + st.clubValidDays + ' days and enjoy ' + offer + '. Just show this message at the counter.' : ' Come and see us again soon.');
+  if (st.address) t += '\n' + st.address;
+  return t + '\n\n(Reply STOP if you do not want these messages.)';
+}

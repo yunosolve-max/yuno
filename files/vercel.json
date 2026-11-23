@@ -4,8 +4,9 @@
   "rewrites": [
     { "source": "/counter", "destination": "/counter.html" },
     { "source": "/kitchen", "destination": "/kitchen.html" },
+    { "source": "/waiter", "destination": "/waiter.html" },
     { "source": "/admin", "destination": "/admin.html" },
-    { "source": "/((?!counter|kitchen|admin|menu|index)[a-z0-9][a-z0-9-]*)", "destination": "/menu.html" }
+    { "source": "/((?!counter|kitchen|waiter|admin|menu|index)[a-z0-9][a-z0-9-]*)", "destination": "/menu.html" }
   ],
   "headers": [
     {

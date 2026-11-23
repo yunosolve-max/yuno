@@ -1,5 +1,5 @@
 // YUNO admin: only you (the YUNO owner) can use this page.
-// Create a cafe, then give its staff a login for the counter screen.
+// Create a cafe, then give its staff a login for the counter screen and its waiters a login for the waiter screen.
 import {
   db, auth, firebaseConfig, initializeApp, getAuth, doc, getDoc, setDoc, updateDoc, deleteDoc, collection, onSnapshot, getDocs, query, limit,
   serverTimestamp, writeBatch, arrayUnion, arrayRemove, onAuthStateChanged, signInWithEmailAndPassword,
@@ -15,11 +15,12 @@ function staffMaker() {
   return helperAuth;
 }
 
-const S = { phase: 'auth', user: null, cafes: [], staff: {}, slugTouched: false, loginErr: '', loginBusy: false };
-let subs = [], staffSubs = {}, cardEls = {};
+const S = { phase: 'auth', user: null, cafes: [], staff: {}, waiters: {}, slugTouched: false, loginErr: '', loginBusy: false };
+let subs = [], staffSubs = {}, waiterSubs = {}, cardEls = {};
 function stopSubs() {
   subs.forEach(u => { try { u(); } catch (e) {} }); subs = [];
   Object.values(staffSubs).forEach(u => { try { u(); } catch (e) {} }); staffSubs = {}; cardEls = {};
+  Object.values(waiterSubs).forEach(u => { try { u(); } catch (e) {} }); waiterSubs = {};
 }
 
 /* ---------- Views ---------- */
@@ -66,8 +67,9 @@ function cardSkeleton(slug) {
     '<div class="links"><a class="btn-ghost" target="_blank" rel="noopener" href="/menu.html?cafe=' + s + '&table=1">Open menu</a>' +
     '<a class="btn-ghost" target="_blank" rel="noopener" href="/counter?cafe=' + s + '">Open counter</a>' +
     '<a class="btn-ghost" target="_blank" rel="noopener" href="/kitchen?cafe=' + s + '">Kitchen screen</a>' +
+    '<a class="btn-ghost" target="_blank" rel="noopener" href="/waiter?cafe=' + s + '">Waiter screen</a>' +
     '<a class="btn-ghost" target="_blank" rel="noopener" href="/counter?cafe=' + s + '&view=settings">QR codes</a></div>' +
-    '<div class="feat-row"></div>' +
+    '<div class="feat-row fr-games"></div><div class="feat-row fr-lb"></div><div class="feat-row fr-wa"></div>' +
     '<p class="muted" style="font-size:14px;font-weight:600;margin-top:6px">Staff logins</p><ul class="staff-list"></ul>' +
     '<form class="add-staff" data-slug="' + s + '" novalidate><div class="row">' +
     '<label class="field"><span>Staff email</span><input class="input" type="email" name="email" autocomplete="off" placeholder="owner@cafe.com"></label>' +
@@ -78,19 +80,36 @@ function cardSkeleton(slug) {
     '<label class="field"><span>User UID</span><input class="input" name="uid" autocomplete="off" placeholder="From Firebase, Authentication, Users"></label>' +
     '<label class="field"><span>Email (for your reference)</span><input class="input" type="email" name="email" autocomplete="off"></label></div>' +
     '<p class="err" hidden role="alert"></p><button class="btn-ghost" type="submit">Link login</button></form></details>' +
+    '<p class="muted" style="font-size:14px;font-weight:600;margin-top:18px">Waiter logins</p>' +
+    '<p class="muted" style="font-size:13px;margin-top:2px">Waiters can take table orders, mark food served and collect payment. They can\u2019t change the menu, see sales or give discounts.</p><ul class="waiter-list"></ul>' +
+    '<form class="add-waiter" data-slug="' + s + '" novalidate><div class="row">' +
+    '<label class="field"><span>Waiter name</span><input class="input" name="name" maxlength="40" autocomplete="off" placeholder="Anu"></label>' +
+    '<label class="field"><span>Waiter email</span><input class="input" type="email" name="email" autocomplete="off" placeholder="anu@cafe.com"></label>' +
+    '<label class="field"><span>Password</span><input class="input" type="text" name="password" autocomplete="off" placeholder="At least 8 characters"></label></div>' +
+    '<p class="err" hidden role="alert"></p><button class="btn-primary inline" type="submit">Create waiter login</button></form>' +
+    '<details style="margin-top:12px"><summary class="muted" style="cursor:pointer;font-size:14px">This waiter already has a login</summary>' +
+    '<form class="link-waiter" data-slug="' + s + '" novalidate style="margin-top:10px"><div class="row">' +
+    '<label class="field"><span>User UID</span><input class="input" name="uid" autocomplete="off" placeholder="From Firebase, Authentication, Users"></label>' +
+    '<label class="field"><span>Waiter name</span><input class="input" name="name" maxlength="40" autocomplete="off"></label>' +
+    '<label class="field"><span>Email (for your reference)</span><input class="input" type="email" name="email" autocomplete="off"></label></div>' +
+    '<p class="err" hidden role="alert"></p><button class="btn-ghost" type="submit">Link login</button></form></details>' +
     brandHtml(s) +
     '<details class="danger-zone"><summary>Delete this cafe</summary>' +
-    '<form class="del-cafe" data-slug="' + s + '" novalidate><p class="muted">This permanently deletes the cafe\u2019s menu, every order, all bills and sales history, and removes staff access. Printed QR codes will stop working. This can\u2019t be undone.</p>' +
+    '<form class="del-cafe" data-slug="' + s + '" novalidate><p class="muted">This permanently deletes the cafe\u2019s menu, every order, all bills and sales history, and removes staff and waiter access. Printed QR codes will stop working. This can\u2019t be undone.</p>' +
     '<label class="field"><span>Type <b>' + s + '</b> to confirm</span><input class="input" name="confirm" autocomplete="off" autocapitalize="off" spellcheck="false"></label>' +
     '<p class="err" hidden role="alert"></p><button class="btn btn-danger" type="submit">Delete forever</button></form></details>';
 }
 const gamesBusy = {};
-async function toggleGames(slug) {
-  const c = S.cafes.find(x => x.id === slug); if (!c || gamesBusy[slug]) return;
-  gamesBusy[slug] = true; renderCafes();
-  try { await updateDoc(doc(db, 'cafes', slug), { games: !c.games, updatedAt: serverTimestamp() }); toast(c.name + ': games turned ' + (c.games ? 'off.' : 'on.')); }
+// Two separate switches per cafe: "games" (fun games) and "leaderboard" (Tea Stack, Chai Rush, Top 10, prize).
+const FEATURES = { games: 'Entertaining games', leaderboard: 'Leaderboard and prize', whatsapp: 'WhatsApp bills and customer club' };
+async function toggleFeature(slug, key) {
+  const c = S.cafes.find(x => x.id === slug), bk = slug + ':' + key; if (!c || gamesBusy[bk]) return;
+  gamesBusy[bk] = true; renderCafes();
+  try { // Always write both values, so the two switches stay independent from the first tap on.
+    const both = key === 'whatsapp' ? {} : { games: c.games, leaderboard: c.leaderboard };
+    await updateDoc(doc(db, 'cafes', slug), Object.assign(both, { [key]: !c[key], updatedAt: serverTimestamp() })); toast(c.name + ': ' + FEATURES[key].toLowerCase() + ' turned ' + (c[key] ? 'off.' : 'on.')); }
   catch (e) { toast('Couldn\u2019t change that. Check your internet.'); }
-  delete gamesBusy[slug]; renderCafes();
+  delete gamesBusy[bk]; renderCafes();
 }
 function renderCafes() {
   const box = $('#cafe-list'); if (!box) return;
@@ -103,12 +122,20 @@ function renderCafes() {
     if (!el) { el = document.createElement('article'); el.className = 'cafe-card'; el.id = 'cafe-' + c.id; el.innerHTML = cardSkeleton(c.id); cardEls[c.id] = el; }
     el.querySelector('.cc-head').innerHTML = '<h3>' + (c.brand.logo ? '<img class="cc-logo" src="' + c.brand.logo + '" alt="">' : '') + esc(c.name) + '</h3><p class="muted" style="font-size:14px">' + esc(location.origin + '/menu.html?cafe=' + c.id) +
       ', ' + c.tables + ' tables, ' + c.menu.length + ' menu items, ' + (c.acceptingOrders ? 'taking orders' : 'orders paused') + '</p>';
-    el.querySelector('.feat-row').innerHTML = '<div><b>Customer games</b><small>' + (c.games ? 'On: games, leaderboard and prizes show on the menu.' : 'Off: customers don\u2019t see any games.') + '</small></div>' +
-      '<button type="button" class="sw" role="switch" aria-checked="' + c.games + '" aria-label="Customer games for ' + esc(c.name) + '" data-action="toggle-games" data-slug="' + esc(c.id) + '"' + (gamesBusy[c.id] ? ' disabled' : '') + '></button>';
+    el.querySelector('.fr-games').innerHTML = '<div><b>Entertaining games</b><small>' + (c.games ? 'On: memory, tic-tac-toe, connect four, quiz and more show on the menu.' : 'Off: customers don\u2019t see the fun games.') + '</small></div>' +
+      '<button type="button" class="sw" role="switch" aria-checked="' + c.games + '" aria-label="Entertaining games for ' + esc(c.name) + '" data-action="toggle-games" data-slug="' + esc(c.id) + '"' + (gamesBusy[c.id + ':games'] ? ' disabled' : '') + '></button>';
+    el.querySelector('.fr-lb').innerHTML = '<div><b>Leaderboard and prize</b><small>' + (c.leaderboard ? 'On: Tea Stack, Chai Rush, the Top 10 and the prize show on the menu.' : 'Off: no leaderboard games, scores or prize.') + '</small></div>' +
+      '<button type="button" class="sw" role="switch" aria-checked="' + c.leaderboard + '" aria-label="Leaderboard and prize for ' + esc(c.name) + '" data-action="toggle-leaderboard" data-slug="' + esc(c.id) + '"' + (gamesBusy[c.id + ':leaderboard'] ? ' disabled' : '') + '></button>';
+    el.querySelector('.fr-wa').innerHTML = '<div><b>WhatsApp bills and customer club</b><small>' + (c.whatsapp ? 'On: the counter and waiters can send bills on WhatsApp, and the Customers tab sends win-back offers.' : 'Off: no phone fields, no customer list, no WhatsApp messages.') + '</small></div>' +
+      '<button type="button" class="sw" role="switch" aria-checked="' + c.whatsapp + '" aria-label="WhatsApp bills and customer club for ' + esc(c.name) + '" data-action="toggle-whatsapp" data-slug="' + esc(c.id) + '"' + (gamesBusy[c.id + ':whatsapp'] ? ' disabled' : '') + '></button>';
     const staff = S.staff[c.id] || [];
     el.querySelector('.staff-list').innerHTML = staff.length ? staff.map(p =>
       '<li><span>' + esc(p.email || p.id) + '</span><button type="button" class="btn-ghost" data-action="remove-staff" data-slug="' + esc(c.id) + '" data-uid="' + esc(p.id) + '">Remove</button></li>').join('')
       : '<li class="muted">No staff logins yet.</li>';
+    const waiters = S.waiters[c.id] || [];
+    el.querySelector('.waiter-list').innerHTML = waiters.length ? waiters.map(p =>
+      '<li><span>' + esc(p.name || 'Waiter') + ', ' + esc(p.email || p.id) + '</span><button type="button" class="btn-ghost" data-action="remove-waiter" data-slug="' + esc(c.id) + '" data-uid="' + esc(p.id) + '">Remove</button></li>').join('')
+      : '<li class="muted">No waiter logins yet.</li>';
     box.appendChild(el);
   });
   Object.keys(brandDraft).forEach(paintBrand);
@@ -117,6 +144,14 @@ function watchStaff(slug) {
   if (staffSubs[slug]) return;
   staffSubs[slug] = onSnapshot(collection(db, 'cafes', slug, 'staff'), snap => {
     S.staff[slug] = snap.docs.map(d => ({ id: d.id, email: (d.data() || {}).email || '' }));
+    renderCafes();
+  }, () => {});
+}
+
+function watchWaiters(slug) {
+  if (waiterSubs[slug]) return;
+  waiterSubs[slug] = onSnapshot(collection(db, 'cafes', slug, 'waiters'), snap => {
+    S.waiters[slug] = snap.docs.map(d => { const x = d.data() || {}; return { id: d.id, email: x.email || '', name: x.name || '' }; });
     renderCafes();
   }, () => {});
 }
@@ -135,7 +170,8 @@ onAuthStateChanged(auth, async user => {
     S.cafes = snap.docs.map(d => Object.assign({ id: d.id }, cleanCafe(d.data()))).sort((a, b) => a.name.localeCompare(b.name));
     const live = new Set(S.cafes.map(c => c.id));
     Object.keys(staffSubs).forEach(slug => { if (!live.has(slug)) { try { staffSubs[slug](); } catch (e) {} delete staffSubs[slug]; delete S.staff[slug]; } });
-    S.cafes.forEach(c => watchStaff(c.id));
+    Object.keys(waiterSubs).forEach(slug => { if (!live.has(slug)) { try { waiterSubs[slug](); } catch (e) {} delete waiterSubs[slug]; delete S.waiters[slug]; } });
+    S.cafes.forEach(c => { watchStaff(c.id); watchWaiters(c.id); });
     renderCafes();
   }, () => toast('Couldn\u2019t load cafes. Refresh the page.')));
 });
@@ -243,7 +279,9 @@ async function deleteCafe(slug, progress) {
   let removed = 0;
   const staffSnap = await getDocs(collection(db, 'cafes', slug, 'staff'));
   const staffUids = staffSnap.docs.map(d => d.id);
-  for (const sub of ['orders', 'bills', 'calls', 'meta', 'days', 'media', 'rooms', 'scores', 'staff']) {
+  const waiterSnap = await getDocs(collection(db, 'cafes', slug, 'waiters'));
+  const waiterUids = waiterSnap.docs.map(d => d.id);
+  for (const sub of ['orders', 'bills', 'calls', 'meta', 'days', 'media', 'rooms', 'scores', 'expenses', 'customers', 'staff', 'waiters']) {
     for (;;) {
       const snap = await getDocs(query(collection(db, 'cafes', slug, sub), limit(400)));
       if (snap.empty) break;
@@ -257,6 +295,11 @@ async function deleteCafe(slug, progress) {
   if (staffUids.length) {
     const b = writeBatch(db);
     staffUids.forEach(uid => b.set(doc(db, 'staffIndex', uid), { cafes: arrayRemove(slug) }, { merge: true }));
+    await b.commit();
+  }
+  if (waiterUids.length) {
+    const b = writeBatch(db);
+    waiterUids.forEach(uid => b.set(doc(db, 'waiterIndex', uid), { cafes: arrayRemove(slug) }, { merge: true }));
     await b.commit();
   }
   await deleteDoc(doc(db, 'cafes', slug));
@@ -287,7 +330,21 @@ document.addEventListener('click', async e => {
     return;
   }
   if (['pick-theme', 'pick-mode', 'pick-fest', 'logo-remove', 'brand-save'].includes(t.dataset.action)) { brandAction(t); return; }
-  if (t.dataset.action === 'toggle-games') { toggleGames(t.dataset.slug); return; }
+  if (t.dataset.action === 'toggle-games') { toggleFeature(t.dataset.slug, 'games'); return; }
+  if (t.dataset.action === 'toggle-leaderboard') { toggleFeature(t.dataset.slug, 'leaderboard'); return; }
+  if (t.dataset.action === 'toggle-whatsapp') { toggleFeature(t.dataset.slug, 'whatsapp'); return; }
+  if (t.dataset.action === 'remove-waiter') {
+    if (t.dataset.armed !== '1') { t.dataset.armed = '1'; t.textContent = 'Tap again to remove'; setTimeout(() => { t.dataset.armed = ''; t.textContent = 'Remove'; }, 3000); return; }
+    const slug = t.dataset.slug, uid = t.dataset.uid;
+    try {
+      const b = writeBatch(db);
+      b.delete(doc(db, 'cafes', slug, 'waiters', uid));
+      b.set(doc(db, 'waiterIndex', uid), { cafes: arrayRemove(slug) }, { merge: true });
+      await b.commit();
+      toast('Removed. That login can no longer open the waiter screen for this cafe.');
+    } catch (err) { toast('Couldn\u2019t remove that login. Try again.'); }
+    return;
+  }
   if (t.dataset.action === 'remove-staff') {
     if (t.dataset.armed !== '1') { t.dataset.armed = '1'; t.textContent = 'Tap again to remove'; setTimeout(() => { t.dataset.armed = ''; t.textContent = 'Remove'; }, 3000); return; }
     const slug = t.dataset.slug, uid = t.dataset.uid;
@@ -374,6 +431,52 @@ document.addEventListener('submit', async e => {
         : 'Couldn\u2019t create the login. Check your internet and try again.');
     }
     btn.disabled = false; btn.textContent = 'Create staff login';
+    return;
+  }
+
+  if (f.classList.contains('add-waiter')) {
+    const slug = f.dataset.slug, name = f.elements.name.value.trim(), email = f.email.value.trim(), pw = f.password.value;
+    if (!name) { showErr(f, 'Add the waiter\u2019s name. It shows on their orders.'); return; }
+    if (!/^\S+@\S+\.\S+$/.test(email)) { showErr(f, 'Add a valid email.'); return; }
+    if (pw.length < 8) { showErr(f, 'Use a password with at least 8 characters.'); return; }
+    showErr(f, '');
+    const btn = f.querySelector('button[type=submit]'); btn.disabled = true; btn.textContent = 'Creating\u2026';
+    try {
+      const helper = staffMaker();
+      const cred = await createUserWithEmailAndPassword(helper, email, pw);
+      const uid = cred.user.uid;
+      await signOut(helper);
+      const b = writeBatch(db);
+      b.set(doc(db, 'cafes', slug, 'waiters', uid), { name, email, addedAt: serverTimestamp() });
+      b.set(doc(db, 'waiterIndex', uid), { email, cafes: arrayUnion(slug) }, { merge: true });
+      await b.commit();
+      f.reset();
+      toast('Waiter login created. Share the email, password, and waiter link (/waiter) with ' + name + '.');
+    } catch (err) {
+      const c = err && err.code;
+      showErr(f, c === 'auth/email-already-in-use' ? 'That email already has a login. Use \u201CThis waiter already has a login\u201D below with its User UID.'
+        : c === 'auth/invalid-email' ? 'That email doesn\u2019t look right.'
+        : c === 'auth/weak-password' ? 'Choose a stronger password.'
+        : c === 'auth/operation-not-allowed' ? 'Email login is off in Firebase. Turn on Email/Password in Authentication.'
+        : c === 'permission-denied' ? 'Not allowed yet. Publish the new firestore.rules in Firebase, then try again.'
+        : 'Couldn\u2019t create the login. Check your internet and try again.');
+    }
+    btn.disabled = false; btn.textContent = 'Create waiter login';
+    return;
+  }
+
+  if (f.classList.contains('link-waiter')) {
+    const slug = f.dataset.slug, uid = f.uid.value.trim(), name = f.elements.name.value.trim(), email = f.email.value.trim();
+    if (!/^[A-Za-z0-9]{20,40}$/.test(uid)) { showErr(f, 'Paste the User UID from Firebase, Authentication, Users.'); return; }
+    if (!name) { showErr(f, 'Add the waiter\u2019s name. It shows on their orders.'); return; }
+    showErr(f, '');
+    try {
+      const b = writeBatch(db);
+      b.set(doc(db, 'cafes', slug, 'waiters', uid), { name, email, addedAt: serverTimestamp() });
+      b.set(doc(db, 'waiterIndex', uid), { email, cafes: arrayUnion(slug) }, { merge: true });
+      await b.commit();
+      f.reset(); toast('Login linked as a waiter for this cafe.');
+    } catch (err) { showErr(f, 'Couldn\u2019t link that login. Try again.'); }
     return;
   }
 

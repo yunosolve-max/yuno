@@ -367,9 +367,9 @@ button.chip-table{cursor:pointer}
 .cafe-card{background:var(--surface-2);border-radius:26px;padding:20px;margin-bottom:14px}
 .cafe-card h3{font-size:24px;font-weight:500;letter-spacing:-.04em}
 .cafe-card .links{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
-.staff-list{list-style:none;padding:0;margin:8px 0}
-.staff-list li{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--hair);font-size:14px}
-.staff-list li .btn-ghost{margin-left:auto;font-size:13px;padding:6px 12px}
+.staff-list,.waiter-list{list-style:none;padding:0;margin:8px 0}
+.staff-list li,.waiter-list li{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--hair);font-size:14px}
+.staff-list li .btn-ghost,.waiter-list li .btn-ghost{margin-left:auto;font-size:13px;padding:6px 12px}
 .admin-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,380px);gap:20px;align-items:start}
 @media (max-width:900px){ .admin-grid{grid-template-columns:1fr} }
 .admin-grid .panel{padding:24px}
@@ -1203,3 +1203,56 @@ body.g-open{overflow:hidden}
 .feat-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 14px;margin:10px 0 4px;border-radius:16px;background:var(--surface-2)}
 .feat-row b{display:block;font-weight:700}
 .feat-row small{display:block;color:var(--muted);font-size:13px;margin-top:2px}
+
+/* ---------- Counter polish: tables first, attention beside them, bigger touch targets ---------- */
+.tables-layout{display:flex;flex-direction:column;gap:14px}
+.tables-side{order:-1;min-width:0}
+.tables-side:empty{display:none}
+.tables-side .req-panel{margin-bottom:0}
+.req-more{width:100%;margin-top:8px;padding:12px}
+.req-act button{min-height:46px}
+@media (max-width:560px){
+  .req-panel{padding:14px 16px;border-radius:24px}
+  .req-panel h2{font-size:20px;margin-bottom:2px}
+  .req-panel .fine{display:none}
+  /* Text on the left, buttons on the right, so each request takes little height */
+  .req{flex-direction:row;align-items:center;padding:10px 0;gap:10px}
+  .req-main b{font-size:17px}
+  .req-act{flex-direction:column;flex-shrink:0;gap:6px}
+  .req-act button{flex:none;min-width:96px;min-height:42px;padding:9px 14px}
+  .ttile{min-height:118px}
+}
+@media (min-width:900px){
+  .tables-layout{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:26px;align-items:start}
+  .tables-side{order:0;position:sticky;top:84px;max-height:calc(100dvh - 104px);overflow:auto;border-radius:28px;scrollbar-width:thin}
+  .tables-side .req{flex-direction:column;align-items:stretch}
+  .tables-side .req-act button{flex:1}
+  .ttile{min-height:124px}
+}
+.qb{padding:18px 8px;font-size:18px}
+.chip{min-height:38px}
+
+/* ---------- WhatsApp bills and the customer club ---------- */
+.btn-wa{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;border-radius:999px;background:#25D366;color:#06240F;font:inherit;font-weight:800;font-size:16px;padding:14px 22px;cursor:pointer;text-decoration:none;box-shadow:0 12px 24px -14px rgba(37,211,102,.85);transition:transform .12s ease}
+.btn-wa:active{transform:scale(.98)}
+.btn-wa[disabled]{opacity:.45;cursor:not-allowed;box-shadow:none}
+.btn-wa.sm{padding:10px 18px;font-size:14px;min-height:42px}
+.btn-wa.big{display:flex;width:100%;padding:18px;font-size:18px;margin-bottom:12px}
+.dlg-actions .btn-wa{flex:1}
+.wa-preview{white-space:pre-wrap;word-break:break-word;font:inherit;font-size:14px;line-height:1.5;background:var(--surface-2);border:1px solid var(--hair);border-radius:18px;padding:14px 16px;margin:6px 0 14px;max-height:260px;overflow:auto}
+.wa-banner{position:sticky;top:0;z-index:25;display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 16px;background:var(--surface);border-bottom:2px solid #25D366;box-shadow:var(--lift-sm)}
+.wa-banner span{flex:1 1 200px;font-weight:700}
+.qphone{margin-bottom:2px;font-size:16px}
+.seg-tabs{margin:14px 0 4px}
+.seg-tabs .chip b{margin-left:4px;color:var(--violet-text)}
+.seg-tabs .chip[aria-pressed="true"] b{color:inherit}
+.cust-row{flex-wrap:wrap}
+.cust-row.off{opacity:.55}
+.cust-act{display:flex;align-items:center;gap:6px;margin-left:auto}
+.cust-act .mini{background:var(--surface-2);min-height:42px;padding:8px 14px}
+.club-warn{background:var(--butter-tint);color:var(--ink);border-radius:16px;padding:12px 14px;margin:12px 0 0;font-size:14px}
+.wa-tip{margin-top:16px}
+.wa-tip summary{cursor:pointer;color:var(--muted);font-weight:600;padding:6px 0}
+.club-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.club-stats .rep-card{padding:16px}
+@media (max-width:560px){ .club-stats .rep-card{padding:12px} .club-stats .stat-num{font-size:30px} .club-stats .stat-label{font-size:12px} }

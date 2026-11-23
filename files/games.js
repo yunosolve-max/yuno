@@ -109,12 +109,14 @@ const SHARED = [
 const ONLINE = [['ttt', '\u274C', 'Tic-tac-toe', '2 phones'], ['c4', '\u{1F534}', 'Connect four', '2 phones'], ['quiz', '\u2753', 'Food quiz', '2 to 6 phones']];
 function hubHtml() {
   const card = ([k, ico, name, sub, a, b]) => '<button type="button" class="g-card" data-g="pick" data-k="' + k + '"><span class="g-ico" aria-hidden="true">' + ico + '</span><b>' + esc(name) + '</b><span>' + esc(sub) + '</span><i>' + (a === b ? a + ' players' : a + '\u2013' + b + ' players') + '</i></button>';
+  // The cafe admin has two separate switches: fun games, and the leaderboard (Tea Stack, Chai Rush, prize).
+  const showFun = !opts || opts.games !== false;
   return frame('Play while you wait',
     '<p class="g-lead">Your food is on its way. Pick a game!</p>' + championsHtml() +
-    '<h3 class="g-h">On this phone</h3><div class="g-grid">' + SHARED.map(card).join('') + '</div>' +
+    (showFun ? '<h3 class="g-h">On this phone</h3><div class="g-grid">' + SHARED.map(card).join('') + '</div>' +
     '<h3 class="g-h">On your own phones</h3><p class="g-note">Everyone plays on their own phone with a room code.</p>' +
     '<div class="g-grid">' + ONLINE.map(([k, ico, name, sub]) => '<button type="button" class="g-card" data-g="online" data-k="' + k + '"><span class="g-ico" aria-hidden="true">' + ico + '</span><b>' + esc(name) + '</b><span>' + esc(sub) + '</span><i>Online</i></button>').join('') + '</div>' +
-    '<button type="button" class="g-btn ghost" data-g="join">I have a room code</button>');
+    '<button type="button" class="g-btn ghost" data-g="join">I have a room code</button>' : ''));
 }
 function playersHtml() {
   const def = SHARED.find(x => x[0] === G.game), [, ico, name, sub, a, b] = def;
@@ -554,7 +556,7 @@ function prizeLine() {
   return '<p class="arc-prize"><span aria-hidden="true">\u{1F381}</span><span><b>' + esc(prize()) + '</b> for the #1 player ' + curWord() + '. The top score when the cafe closes' + (periodMode() === 'week' ? ' on Sunday' : '') + ' wins. Come back and show your phone to collect it.</span></p>';
 }
 function championsHtml() {
-  if (!opts || !opts.cafeId) return '';
+  if (!opts || !opts.cafeId || opts.leaderboard === false) return '';
   arcInit();
   const card = (g) => { const b = board(g), top = b.list[0];
     return '<button type="button" class="arc-card arc-' + g + '" data-g="arc" data-k="' + g + '"><span class="arc-art">' + ARC_ART[g] + '</span><b>' + esc(ARCADE[g].name) + '</b>' +

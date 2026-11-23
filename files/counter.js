@@ -6,10 +6,12 @@ import {
 } from './fb.js';
 import {
   $, esc, rupee, money2, shortCode, toMs, ago, ls, toast, unlockAudio, chime, alarm, stopAlarm, alarmPlaying, audioReady,
-  cleanCafe, newId, BRAND_SVG, dayKey, fmtTime, fmtDateTime, iconFor, bizDay, bizStart, payAmount, shortMoney, processPhoto, ALLERGENS, SPICE, loginError, printOut, printKot, kotAuto, kotPrintedOnce, lbPeriods, LB_GAMES } from './common.js';
+  cleanCafe, newId, BRAND_SVG, dayKey, fmtTime, fmtDateTime, iconFor, bizDay, bizStart, payAmount, shortMoney, processPhoto, ALLERGENS, SPICE, loginError, printOut, printKot, kotAuto, kotPrintedOnce, lbPeriods, LB_GAMES, normPhone, phoneShow, waLink, billMessage, clubMessage } from './common.js';
 
 const params = new URLSearchParams(location.search);
-const VIEWS = ['tables', 'bills', 'menu', 'settings'];
+const VIEWS = ['tables', 'bills', 'purchases', 'customers', 'menu', 'settings'];
+// What the cafe buys. Used by the Purchases tab to work out the real profit.
+const EXP_CATS = [['stock', 'Ingredients'], ['pack', 'Packaging'], ['staff', 'Salary'], ['rent', 'Rent'], ['util', 'Utilities'], ['other', 'Other']];
 const TIMES = [5, 10, 15, 20, 30];
 const REASONS = ['Item not available', 'Customer left', 'Kitchen is closed', 'Duplicate order', 'Other'];
 const PAY = [['cash', 'Cash'], ['upi', 'UPI'], ['card', 'Card']];
@@ -20,6 +22,8 @@ const ICONS = {
   bills: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h12v20l-3-2-3 2-3-2-3 2z"/><path d="M9 7h6M9 11h6M9 15h4"/></svg>',
   menu: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5M9 8h6M9 12h6"/></svg>',
   settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
+  customers: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><path d="M16 5.2a3 3 0 0 1 0 5.6M18 14.8c1.8.7 3 2.4 3 5.2"/></svg>',
+  purchases: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6h15l-1.6 9H7.6z"/><path d="M6 6 5.2 3H2"/><circle cx="9.5" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/></svg>',
   back: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>',
   bell: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg>',
   mute: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 9.3-5M18 8c0 7 3 8 3 8H9M10.3 21a1.9 1.9 0 0 0 3.4 0M3 3l18 18"/></svg>'
@@ -31,6 +35,8 @@ const S = {
   view: VIEWS.includes(params.get('view')) ? params.get('view') : 'tables',
   pos: null, drafts: {}, posCat: 'all', posSearch: '', cartOpen: false, acceptMins: {},
   billsTab: 'today', reportDate: '', calMonth: '', monthDays: null, dayBills: null, photos: undefined, endHour: null, calOpen: false,
+  pMonth: '', exp: null, pDays: null, pBusy: false, pDraft: { name: '', amount: '', cat: 'stock', pay: 'cash', date: '', note: '', err: '' },
+  customers: null, custSeg: 'winback', custSearch: '', quickPhone: {}, reqAll: false,
   soundOn: ls.get('yumotap:sound', true), alarmRepeat: ls.get('yumotap:alarmRepeat', true),
   pending: {}, dialog: null, loginErr: '', loginBusy: false, loginRerender: false,
   settingsDirty: false, savingSettings: false, qrBase: ls.get('yumotap:qrBase', location.origin)
@@ -89,6 +95,7 @@ function normOrder(id, d) {
     createdAt: toMs(d.createdAt), acceptedAt: d.acceptedAt ? toMs(d.acceptedAt) : 0, readyAt: d.readyAt ? toMs(d.readyAt) : 0, prepMins: Math.max(0, parseInt(d.prepMins, 10) || 0),
     billId: typeof d.billId === 'string' ? d.billId : '', cancelledBy: d.cancelledBy === 'customer' ? 'customer' : (d.cancelledBy ? 'cafe' : ''),
     cancelReason: typeof d.cancelReason === 'string' ? d.cancelReason.slice(0, 120) : '', source: d.source === 'staff' ? 'staff' : 'customer',
+    waiter: d.source === 'waiter' && typeof d.waiterName === 'string' ? d.waiterName.slice(0, 40) : '',
     updatedAt: d.updatedAt ? toMs(d.updatedAt) : 0, decidedBy: d.decidedBy === 'kitchen' ? 'kitchen' : d.decidedBy === 'counter' ? 'counter' : ''
   };
 }
@@ -99,7 +106,8 @@ function normBill(id, d) {
     orderIds: Array.isArray(d.orderIds) ? d.orderIds.filter(x => typeof x === 'string') : [],
     lines: Array.isArray(d.lines) ? d.lines.map(l => ({ name: String((l && l.name) || 'Item'), qty: parseInt(l && l.qty, 10) || 0, price: Number(l && l.price) || 0 })) : [],
     subtotal: num(d.subtotal), discount: num(d.discount), gstPct: num(d.gstPct), gst: num(d.gst), roundOff: num(d.roundOff), total: num(d.total),
-    pay: ['cash', 'upi', 'card'].includes(d.pay) ? d.pay : 'cash', void: d.void === true, createdAt: toMs(d.createdAt)
+    pay: ['cash', 'upi', 'card'].includes(d.pay) ? d.pay : 'cash', void: d.void === true, createdAt: toMs(d.createdAt),
+    phone: typeof d.phone === 'string' ? d.phone.replace(/\D/g, '').slice(0, 15) : '', cname: typeof d.cname === 'string' ? d.cname.slice(0, 30) : ''
   };
 }
 function snapData(d) { try { return d.data({ serverTimestamps: 'estimate' }); } catch (e) { return d.data(); } }
@@ -153,7 +161,7 @@ async function decideOrder(id, data, okMsg) {
 /* ---------- Live data ---------- */
 let subs = [], daySubs = [], monthUnsub = null, monthSubKey = '', subsDay = '';
 function stopDaySubs() { daySubs.forEach(u => { try { u(); } catch (e) {} }); daySubs = []; }
-function stopSubs() { subs.forEach(u => { try { u(); } catch (e) {} }); subs = []; stopDaySubs(); if (monthUnsub) { monthUnsub(); monthUnsub = null; monthSubKey = ''; } if (dayBillsUnsub) { dayBillsUnsub(); dayBillsUnsub = null; dayBillsKey = ''; } }
+function stopSubs() { subs.forEach(u => { try { u(); } catch (e) {} }); subs = []; stopDaySubs(); if (monthUnsub) { monthUnsub(); monthUnsub = null; monthSubKey = ''; } if (dayBillsUnsub) { dayBillsUnsub(); dayBillsUnsub = null; dayBillsKey = ''; } stopPurchases(); stopCustomers(); }
 function denied() { stopSubs(); S.phase = 'denied'; render(); }
 function dayStart(key) { const [y, m, d] = key.split('-').map(Number); return new Date(y, m - 1, d); }
 function subscribeDay() {
@@ -287,10 +295,12 @@ function startCafe() {
   subs.push(onSnapshot(cafeRef(), snap => {
     if (!snap.exists()) { stopSubs(); S.phase = 'nocafe'; render(); return; }
     S.cafe = cleanCafe(snap.data());
+    syncCustomers();
     const h = S.cafe.settings.dayEndHour;
     if (S.phase !== 'ready') {
       S.phase = 'ready'; S.endHour = h; S.reportDate = today(); S.calMonth = S.reportDate.slice(0, 7);
-      keepAwake(); subscribeDay(); if (S.view === 'bills') subscribeMonth();
+      S.pMonth = S.reportDate.slice(0, 7);
+      keepAwake(); subscribeDay(); if (S.view === 'bills') subscribeMonth(); if (S.view === 'purchases') subscribePurchases();
       ensureSummaries().then(updatePopular);
     } else if (h !== S.endHour) {
       S.endHour = h; S.reportDate = today(); S.calMonth = S.reportDate.slice(0, 7);
@@ -363,7 +373,8 @@ function renderChrome() {
   if (!ready) return;
   const req = requests();
   const current = S.view === 'pos' ? 'tables' : S.view;
-  const navBtns = VIEWS.map(v => '<button type="button" data-action="view" data-v="' + v + '" aria-current="' + (current === v ? 'page' : 'false') + '">' + ICONS[v] + '<span>' + v[0].toUpperCase() + v.slice(1) + '</span>' + (v === 'tables' && req ? '<b class="nav-badge">' + req + '</b>' : '') + '</button>').join('');
+  const cq = custQueue().length;
+  const navBtns = VIEWS.filter(v => v !== 'customers' || S.cafe.whatsapp).map(v => '<button type="button" data-action="view" data-v="' + v + '" aria-current="' + (current === v ? 'page' : 'false') + '">' + ICONS[v] + '<span>' + v[0].toUpperCase() + v.slice(1) + '</span>' + (v === 'tables' && req ? '<b class="nav-badge">' + req + '</b>' : '') + (v === 'customers' && cq ? '<b class="nav-badge">' + cq + '</b>' : '') + '</button>').join('');
   $('#top-nav').innerHTML = navBtns;
   nav.innerHTML = navBtns;
   $('#top-cafe').innerHTML = (S.cafe.brand.logo ? '<img class="top-logo" src="' + S.cafe.brand.logo + '" alt="">' : '') + esc(S.cafe.name + (S.cafe.acceptingOrders ? '' : ' (orders paused)'));
@@ -390,7 +401,7 @@ function requestsPanel() {
   if (!news.length && !S.calls.length && !unpaid.length) return '';
   const rows = news.map(o => {
     const idA = esc(o.id), dis = S.pending[o.id] ? ' disabled' : '';
-    return '<li class="req"><div class="req-main"><b>' + esc(keyTitle(groupKey(o), o)) + '</b><span>New order, ' + plural(itemCount(o), 'item') + ', ' + rupee(orderTotal(o)) + '</span>' +
+    return '<li class="req"><div class="req-main"><b>' + esc(keyTitle(groupKey(o), o)) + '</b><span>New order' + (o.waiter ? ' from waiter ' + esc(o.waiter) : '') + ', ' + plural(itemCount(o), 'item') + ', ' + rupee(orderTotal(o)) + '</span>' +
       '<span class="muted">' + o.items.map(i => i.qty + '\u00D7 ' + esc(i.name)).join(', ') + (o.note ? '. Note: ' + esc(o.note) : '') + '</span></div>' +
       '<div class="req-act"><button type="button" class="b-accept" data-action="accept" data-id="' + idA + '"' + dis + '>Accept</button>' +
       '<button type="button" class="b-reject" data-action="open-cancel" data-id="' + idA + '"' + dis + '>Reject</button></div></li>';
@@ -399,7 +410,10 @@ function requestsPanel() {
     '<div class="req-act"><button type="button" class="b-accept" data-action="bill-table" data-t="' + u.table + '">Bill now</button></div></li>'
   )).concat(S.calls.map(c => '<li class="req call-row"><div class="req-main"><b>Table ' + c.table + '</b><span>Calling a waiter, ' + ago(c.createdAt) + '</span></div>' +
     '<div class="req-act"><button type="button" class="btn-ghost" data-action="call-done" data-id="' + esc(c.id) + '">Done</button></div></li>'));
-  return '<section class="req-panel" aria-live="polite"><h2>Needs attention <span class="count">' + rows.length + '</span></h2><ul>' + rows.join('') + '</ul>' +
+  // On a phone only the first three show, so the tables stay in reach. A tap shows the rest.
+  const squeeze = window.innerWidth < 900 && rows.length > 3 && !S.reqAll, shown = squeeze ? rows.slice(0, 3) : rows;
+  return '<section class="req-panel" aria-live="polite"><h2>Needs attention <span class="count">' + rows.length + '</span></h2><ul>' + shown.join('') + '</ul>' +
+    (rows.length > 3 && window.innerWidth < 900 ? '<button type="button" class="btn-ghost req-more" data-action="req-toggle">' + (S.reqAll ? 'Show fewer' : 'Show all ' + rows.length) + '</button>' : '') +
     '<p class="fine left">Accepted orders go to the kitchen screen, ready in ' + S.cafe.settings.prepMins + ' min. Change the time from the table.</p></section>';
 }
 function tileState(key) {
@@ -430,13 +444,13 @@ function tablesView() {
     return '<button type="button" class="ttile wide t-' + t.state + '" data-action="open-group" data-k="' + esc(k) + '"><span class="tile-num sm">' + esc(keyTitle(k, sample)) + '</span><span class="tile-amt">' + rupee(t.amount) + '</span><span class="tile-tag">' + esc(t.label) + '</span></button>';
   }).join('');
   return '<div class="wrap page">' + (S.soundOn && !audioReady() ? '<button type="button" class="sound-banner" data-action="unlock">Tap here to turn on the order alarm</button>' : '') +
-    requestsPanel() +
+    '<div class="tables-layout"><div class="tables-main">' +
     '<section><div class="sec-head"><h2>Tables</h2><div class="legend"><span class="lg free">Free</span><span class="lg run">Running</span><span class="lg ready">Ready</span><span class="lg new">New</span><span class="lg unpaid">Not paid</span></div></div>' +
     '<div class="tile-grid">' + tiles + '</div></section>' +
     '<section><div class="sec-head"><h2>Parcel and counter</h2></div><div class="tile-grid">' +
     '<button type="button" class="ttile add" data-action="new-group" data-type="parcel"><span class="tile-plus">+</span><span class="tile-tag">New parcel</span></button>' +
     '<button type="button" class="ttile add" data-action="new-group" data-type="counter"><span class="tile-plus">+</span><span class="tile-tag">Counter sale</span></button>' +
-    otherTiles + '</div></section></div>';
+    otherTiles + '</div></section></div><aside class="tables-side">' + requestsPanel() + '</aside></div></div>';
 }
 
 /* ---------- Order screen (POS) ---------- */
@@ -471,7 +485,7 @@ function runningHtml(os) {
     if (o.status === 'new') {
       const pick = S.acceptMins[o.id] || S.cafe.settings.prepMins;
       const times = TIMES.includes(pick) ? TIMES : TIMES.concat([pick]).sort((a, b) => a - b);
-      extra = '<div class="pending-box"><p><b>Customer order waiting.</b> Ready in:</p><div class="chips">' + times.map(m => '<button type="button" class="chip" data-action="pick-time" data-id="' + idA + '" data-m="' + m + '" aria-pressed="' + (m === pick) + '">' + m + ' min</button>').join('') + '</div>' +
+      extra = '<div class="pending-box"><p><b>' + (o.waiter ? 'Waiter order' : 'Customer order') + ' waiting.</b> Ready in:</p><div class="chips">' + times.map(m => '<button type="button" class="chip" data-action="pick-time" data-id="' + idA + '" data-m="' + m + '" aria-pressed="' + (m === pick) + '">' + m + ' min</button>').join('') + '</div>' +
         '<div class="t-act"><button type="button" class="b-accept" data-action="accept" data-id="' + idA + '"' + dis + '>Accept</button><button type="button" class="b-reject" data-action="open-cancel" data-id="' + idA + '"' + dis + '>Reject</button></div></div>';
     } else if (o.status === 'preparing') {
       const m = minsLeft(o);
@@ -499,6 +513,7 @@ function cartHtml() {
     : (os.length ? '' : '<p class="empty cart-empty">Tap items on the left to start an order.</p>');
   const foot = '<div class="cart-foot">' +
     (d.items.length ? '<button type="button" class="btn-primary" data-action="send">Send to kitchen, ' + rupee(draftTotal) + '</button>' : '') +
+    (billTotal && !d.items.length && S.cafe.whatsapp ? '<input class="input qphone" id="q-phone" data-key="q-phone" type="tel" inputmode="numeric" autocomplete="off" placeholder="Customer phone, optional (WhatsApp bill)" aria-label="Customer phone, optional" value="' + esc(S.quickPhone[key] || '') + '">' : '') +
     (billTotal && !d.items.length ? '<p class="qb-h">One tap: save and print the bill, ' + rupee(quickTotal(key)) + '</p><div class="qb-row">' + PAY.map(([k, l]) => '<button type="button" class="qb" data-action="quick-bill" data-p="' + k + '"' + (S.quickBusy ? ' disabled' : '') + '>' + l + '</button>').join('') + '</div>' : '') +
     (billTotal ? '<button type="button" class="btn-bill' + (d.items.length ? ' secondary' : ' quiet') + '" data-action="bill-pos">' + (d.items.length ? 'Bill ' + rupee(billTotal) : 'Discount, GST or split bill') + '</button>' : '') + '</div>';
   return '<div class="cart-head"><div><h2>' + esc(keyTitle(key)) + '</h2><p class="muted">' + (os.length ? plural(os.length, 'order') + ' open' : 'No orders yet') + '</p></div>' +
@@ -513,7 +528,7 @@ function posView() {
   const waiting = os.some(o => o.status === 'new');
   return '<div class="pos-bar wrap"><button type="button" class="back" data-action="view" data-v="tables">' + ICONS.back + 'Tables</button><h1>' + esc(keyTitle(key)) + '</h1></div>' +
     '<div class="pos' + (S.cartOpen ? ' cart-open' : '') + '">' + posItems() + '<aside class="pos-cart" aria-label="Order">' + cartHtml() + '</aside></div>' +
-    '<button type="button" class="cart-bar' + (waiting ? ' alert' : '') + '" data-action="cart-open"><span>' + (waiting ? 'Customer order waiting' : count ? plural(count, 'new item') : plural(os.length, 'order')) + '</span><b>' + rupee(total) + '</b><span class="cb-go">View order</span></button>';
+    '<button type="button" class="cart-bar' + (waiting ? ' alert' : '') + '" data-action="cart-open"><span>' + (waiting ? 'New order waiting' : count ? plural(count, 'new item') : plural(os.length, 'order')) + '</span><b>' + rupee(total) + '</b><span class="cb-go">View order</span></button>';
 }
 
 /* ---------- Bills view ---------- */
@@ -640,6 +655,206 @@ function billsView() {
   return '<div class="wrap page"><div class="sec-head"><h2>Bills and sales</h2></div><div class="sales-main">' + main + (isToday ? waitHtml() : '') + insightsHtml() + '</div></div>';
 }
 
+/* ---------- Customers: the club and WhatsApp messages ----------
+   Customers are saved only when a phone number is typed at billing (it is always optional).
+   The list below sorts itself: who has not been back, who came once, and the regulars.
+   Staff tap one green button per customer, because WhatsApp itself only sends when a person taps Send. */
+const DAY_MS = 86400000;
+let custUnsub = null;
+function stopCustomers() { if (custUnsub) { custUnsub(); custUnsub = null; } }
+function normCust(id, d) {
+  d = d || {};
+  return { id, phone: String(d.phone || id).replace(/\D/g, ''), name: typeof d.name === 'string' ? d.name.slice(0, 30) : '', visits: Math.max(0, parseInt(d.visits, 10) || 0), spent: num(d.spent),
+    firstVisit: d.firstVisit ? toMs(d.firstVisit) : 0, lastVisit: d.lastVisit ? toMs(d.lastVisit) : 0, lastBill: num(d.lastBill), offerCount: parseInt(d.offerCount, 10) || 0,
+    lastOfferAt: d.lastOfferAt ? toMs(d.lastOfferAt) : 0, optOut: d.optOut === true };
+}
+function syncCustomers() {
+  if (S.cafe && S.cafe.whatsapp) {
+    if (custUnsub) return;
+    custUnsub = onSnapshot(query(collection(db, 'cafes', S.cafeId, 'customers'), orderBy('lastVisit', 'desc'), limit(1500)), snap => {
+      S.customers = snap.docs.map(d => normCust(d.id, snapData(d))); render();
+    }, () => { S.customers = []; render(); });
+  } else if (custUnsub) { stopCustomers(); S.customers = null; }
+}
+// Which list a customer belongs on right now ('' = none): not back for a while, came only once, or a regular.
+function custSegOf(c, now) {
+  if (c.optOut || !c.lastVisit) return '';
+  const st = S.cafe.settings, away = (now - c.lastVisit) / DAY_MS, sinceMsg = c.lastOfferAt ? (now - c.lastOfferAt) / DAY_MS : Infinity;
+  if (away >= st.clubWinbackDays && sinceMsg >= st.clubWinbackDays) return 'winback';
+  if (c.visits === 1 && away >= 2 && away < st.clubWinbackDays && !c.lastOfferAt) return 'second';
+  if (c.visits >= 5 && away >= 7 && away < st.clubWinbackDays && sinceMsg >= 30) return 'regular';
+  return '';
+}
+function custQueue(seg) {
+  if (!S.cafe || !S.cafe.whatsapp || !S.customers) return [];
+  const now = Date.now();
+  return S.customers.filter(c => { const g = custSegOf(c, now); return seg ? g === seg : !!g; }).sort((a, b) => b.spent - a.spent);
+}
+function custUpdate(c, patch, okMsg) {
+  updateDoc(doc(db, 'cafes', S.cafeId, 'customers', c.id), patch).then(() => { if (okMsg) toast(okMsg); }).catch(() => toast('That didn\u2019t save. Check your internet and try again.'));
+}
+// Open WhatsApp with the message ready, then note that this customer was messaged so they leave the list.
+function sendClubMessage(c, kind) {
+  const w = window.open(waLink(c.phone, clubMessage(S.cafe, c, kind)), '_blank');
+  if (!w) { toast('Your browser blocked WhatsApp. Allow pop-ups for this site, then tap again.'); return; }
+  try { w.opener = null; } catch (e) {}
+  custUpdate(c, { offerCount: c.offerCount + 1, lastOfferAt: serverTimestamp(), lastOfferKind: kind });
+}
+// After a bill message is sent: keep the name, or save the customer if the phone was typed afterwards from the Bills tab.
+async function waRemember(d) {
+  const phone = normPhone(d.phone); if (!phone || !S.cafe.whatsapp) return;
+  const name = String(d.name || '').trim().slice(0, 30), ref = doc(db, 'cafes', S.cafeId, 'customers', phone);
+  try {
+    const sn = await getDoc(ref);
+    if (sn.exists()) { if (name && name !== sn.data().name) await updateDoc(ref, { name }); }
+    else if (d.fromBills) {
+      await setDoc(ref, { phone, name, visits: 1, spent: d.bill.total, firstVisit: serverTimestamp(), lastVisit: serverTimestamp(), lastBill: d.bill.total, offerCount: 0, lastOfferAt: 0, optOut: false });
+      await updateDoc(doc(db, 'cafes', S.cafeId, 'bills', d.bill.id), Object.assign({ phone }, name ? { cname: name } : {}));
+    }
+  } catch (e) { /* the message was still sent */ }
+}
+function phoneFieldsHtml(d) {
+  if (!S.cafe.whatsapp) return '';
+  return '<h3 class="form-sub">Bill on WhatsApp <span class="muted">(optional)</span></h3><div class="row"><label class="field"><span>Customer phone</span><input class="input" id="d-phone" data-key="d-phone" type="tel" inputmode="numeric" autocomplete="off" placeholder="98470 12345" value="' + esc(d.phone || '') + '"></label>' +
+    '<label class="field"><span>Name</span><input class="input" id="d-cname" data-key="d-cname" maxlength="30" autocomplete="off" value="' + esc(d.cname || '') + '"></label></div>';
+}
+function waDialog(d) {
+  const phone = normPhone(d.phone), text = billMessage(S.cafe, d.bill, { name: String(d.name || '').trim().slice(0, 30), visits: d.visits });
+  const bad = String(d.phone || '').trim() && !phone;
+  return shell(d.fromBills ? 'Send bill on WhatsApp' : 'Bill saved. Send it on WhatsApp?',
+    '<div class="row"><label class="field"><span>Customer phone</span><input class="input" id="wa-phone" data-key="wa-phone" type="tel" inputmode="numeric" autocomplete="off" placeholder="98470 12345" value="' + esc(d.phone) + '"></label>' +
+    '<label class="field"><span>Name (optional)</span><input class="input" id="wa-name" data-key="wa-name" maxlength="30" autocomplete="off" value="' + esc(d.name) + '"></label></div>' +
+    (bad ? '<p class="err" role="alert">That phone number doesn\u2019t look right.</p>' : '') +
+    '<p class="note-label">What the customer gets</p><pre class="wa-preview">' + esc(text) + '</pre>' +
+    '<div class="dlg-actions">' + (phone ? '<a class="btn-wa" href="' + esc(waLink(phone, text)) + '" target="_blank" rel="noopener" data-action="wa-sent">Send on WhatsApp</a>' : '<button type="button" class="btn-wa" disabled>Send on WhatsApp</button>') +
+    '<button type="button" class="btn btn-soft" data-action="close">' + (d.fromBills ? 'Close' : 'Skip') + '</button></div>' +
+    '<p class="fine">WhatsApp opens with this message ready. Tap Send there.</p>', true);
+}
+function custRowHtml(c, kind, queued) {
+  const away = c.lastVisit ? Math.floor((Date.now() - c.lastVisit) / DAY_MS) : 0, id = esc(c.id);
+  const sub = (c.name ? phoneShow(c.phone) + ', ' : '') + plural(c.visits, 'visit') + ', ' + rupee(c.spent) + ', last seen ' + (away < 1 ? 'today' : away === 1 ? 'yesterday' : away + ' days ago');
+  return '<li class="cust-row' + (c.optOut ? ' off' : '') + '"><span class="br-main"><b>' + esc(c.name || phoneShow(c.phone)) + '</b><span class="muted">' + esc(sub) + (c.optOut ? '. Do not message' : c.offerCount ? '. Messaged ' + c.offerCount + 'x' : '') + '</span></span>' +
+    '<span class="cust-act">' + (c.optOut ? '' : '<button type="button" class="btn-wa sm" data-action="c-send" data-id="' + id + '" data-k="' + kind + '">Send</button>') +
+    (queued ? '<button type="button" class="mini" data-action="c-skip" data-id="' + id + '">Skip</button>' : '') +
+    '<button type="button" class="mini" data-action="c-opt" data-id="' + id + '" aria-label="' + (c.optOut ? 'Allow messages to this customer' : 'Never message this customer') + '">' + (c.optOut ? 'Unmute' : 'Mute') + '</button></span></li>';
+}
+function customersView() {
+  const st = S.cafe.settings, list = S.customers, seg = S.custSeg;
+  if (!list) return '<div class="wrap page"><div class="sec-head"><h2>Customers</h2></div><p class="empty">Loading\u2026</p></div>';
+  const q = { winback: custQueue('winback'), second: custQueue('second'), regular: custQueue('regular') };
+  const waiting = q.winback.length + q.second.length + q.regular.length, returning = list.filter(c => c.visits >= 2).length;
+  const SEGS = [['winback', 'Come back', q.winback.length], ['second', 'Second visit', q.second.length], ['regular', 'Regulars', q.regular.length], ['all', 'All', list.length]];
+  const cards = '<div class="rep-grid club-stats"><div class="rep-card big"><span class="stat-label">Customers saved</span><span class="stat-num">' + list.length + '</span><span class="stat-label">' +
+    (list.length ? Math.round(returning / list.length * 100) + '% came back at least once' : 'Type a phone number when billing to start your list') + '</span></div>' +
+    '<div class="rep-card"><span class="stat-label">Waiting for a message</span><span class="stat-num">' + waiting + '</span></div>' +
+    '<div class="rep-card"><span class="stat-label">Messages sent</span><span class="stat-num">' + list.reduce((a, c) => a + c.offerCount, 0) + '</span></div></div>';
+  const tabs = '<div class="chips seg-tabs">' + SEGS.map(([k, l, n]) => '<button type="button" class="chip" data-action="c-seg" data-s="' + k + '" aria-pressed="' + (seg === k) + '">' + l + ' <b>' + n + '</b></button>').join('') + '</div>';
+  const info = {
+    winback: 'Not seen for ' + st.clubWinbackDays + '+ days. Best customers first.',
+    second: 'Came once, 2+ days ago. A thank-you now makes them a regular.',
+    regular: 'Came 5+ times. A thank-you keeps them loyal.', all: 'Everyone you have saved.'
+  }[seg];
+  let body;
+  if (seg === 'all') {
+    const s2 = S.custSearch.trim().toLowerCase(), now = Date.now();
+    const rows = list.filter(c => !s2 || (c.name + ' ' + c.phone).toLowerCase().includes(s2)).slice(0, 200);
+    body = '<input class="input" id="c-search" data-key="c-search" placeholder="Search name or phone" value="' + esc(S.custSearch) + '" style="margin-bottom:10px">' +
+      (rows.length ? '<ul class="bill-rows">' + rows.map(c => custRowHtml(c, c.visits === 1 ? 'second' : (now - c.lastVisit) / DAY_MS >= st.clubWinbackDays ? 'winback' : 'regular', false)).join('') + '</ul>' : '<p class="empty">No customers found.</p>');
+  } else {
+    const rows = q[seg];
+    body = (rows.length ? '<button type="button" class="btn-wa big" data-action="c-next">Send to next customer (' + rows.length + ' waiting)</button>' : '') +
+      (rows.length ? '<ul class="bill-rows">' + rows.map(c => custRowHtml(c, seg, true)).join('') + '</ul>' : '<p class="empty">Nobody to message here right now. This list fills itself as customers stay away.</p>');
+  }
+  const preview = seg === 'all' ? '' : '<details class="wa-tip"><summary>See the message customers get</summary><pre class="wa-preview">' + esc(clubMessage(S.cafe, { name: 'Rahul' }, seg)) + '</pre></details>';
+  const noOffer = st.clubOffer ? '' : '<p class="club-warn">No offer is set yet, so messages only say hello. <button type="button" class="linkbtn" data-action="view" data-v="settings">Add an offer in Settings</button></p>';
+  return '<div class="wrap page"><div class="sec-head"><h2>Customers</h2></div><div class="sales-main">' + cards + noOffer + tabs + '<p class="muted" style="margin:6px 2px 12px">' + info + '</p>' + body + preview + '</div></div>';
+}
+
+/* ---------- Purchases view: what the cafe spends, and the real profit ---------- */
+// Staff note what they buy (milk, tea leaves, gas, salaries). Profit = sales without GST minus purchases.
+let expUnsub = null, pdaysUnsub = null, expKey = '';
+function stopPurchases() { if (expUnsub) { expUnsub(); expUnsub = null; } if (pdaysUnsub) { pdaysUnsub(); pdaysUnsub = null; } expKey = ''; }
+function normExp(id, d) {
+  d = d || {};
+  return { id, name: String(d.name || '').slice(0, 60), cat: EXP_CATS.some(c => c[0] === d.cat) ? d.cat : 'other', amount: Math.max(0, num(d.amount)),
+    pay: ['cash', 'upi', 'card'].includes(d.pay) ? d.pay : 'cash', note: typeof d.note === 'string' ? d.note.slice(0, 100) : '',
+    day: typeof d.day === 'string' ? d.day : '', createdAt: toMs(d.createdAt) };
+}
+function subscribePurchases(force) {
+  const key = S.pMonth; if (!key || !S.cafeId) return;
+  if (!force && expUnsub && expKey === key) return;
+  stopPurchases(); expKey = key; S.exp = null; S.pDays = null;
+  expUnsub = onSnapshot(query(collection(db, 'cafes', S.cafeId, 'expenses'), where('month', '==', key)), snap => {
+    S.exp = snap.docs.map(d => normExp(d.id, snapData(d))).sort((a, b) => b.day.localeCompare(a.day) || b.createdAt - a.createdAt);
+    if (S.view === 'purchases') render();
+  }, () => { S.exp = []; if (S.view === 'purchases') render(); });
+  pdaysUnsub = onSnapshot(query(collection(db, 'cafes', S.cafeId, 'days'), where('month', '==', key)), snap => {
+    const m = {}; snap.docs.forEach(d => { m[d.id] = d.data(); }); S.pDays = m; if (S.view === 'purchases') render();
+  }, () => { S.pDays = {}; if (S.view === 'purchases') render(); });
+}
+const pMonthName = (k) => { const [y, m] = k.split('-').map(Number); return new Date(y, m - 1, 1).toLocaleString('en-IN', { month: 'long', year: 'numeric' }); };
+const pShift = (k, d) => { const [y, m] = k.split('-').map(Number), t = new Date(y, m - 1 + d, 1); return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0'); };
+const pDayShort = (k) => { const [y, m, d] = k.split('-').map(Number); return d + ' ' + new Date(y, m - 1, 1).toLocaleString('en-IN', { month: 'short' }); };
+const exactMoney = (n) => '\u20B9' + (Number(n) || 0).toLocaleString('en-IN', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 });
+const signedMoney = (n) => (n < 0 ? '\u2212' : '') + rupee(Math.abs(n));
+function purchasesView() {
+  const key = S.pMonth, t = today(), isNow = key === t.slice(0, 7), list = S.exp, days = S.pDays, D = S.pDraft;
+  const head = '<div class="sec-head day-head"><div class="day-pick"><h3>' + esc(pMonthName(key)) + '</h3></div><div class="row-btns">' +
+    '<button type="button" class="icon-btn" data-action="p-month" data-d="-1" aria-label="Previous month">\u2039</button>' +
+    '<button type="button" class="icon-btn" data-action="p-month" data-d="1" aria-label="Next month"' + (isNow ? ' disabled' : '') + '>\u203A</button></div></div>';
+  let cards = '<p class="empty">Loading\u2026</p>', rows = '';
+  if (list && days) {
+    const sales = Object.values(days).reduce((a, d) => a + num(d.total), 0), gst = Object.values(days).reduce((a, d) => a + num(d.gst), 0);
+    const net = sales - gst, spent = list.reduce((a, e) => a + e.amount, 0), profit = net - spent;
+    const byCat = EXP_CATS.map(([k, l]) => [l, list.filter(e => e.cat === k).reduce((a, e) => a + e.amount, 0)]).filter(x => x[1] > 0);
+    // Cash in the drawer today: cash bills minus cash purchases. Only for the current month.
+    let drawer = '';
+    if (isNow) {
+      const cashIn = S.bills.filter(b => !b.void && b.pay === 'cash').reduce((a, b) => a + b.total, 0);
+      const cashOut = list.filter(e => e.day === t && e.pay === 'cash').reduce((a, e) => a + e.amount, 0);
+      drawer = '<div class="rep-card"><span class="stat-label">Cash in drawer today</span><span class="stat-num">' + signedMoney(cashIn - cashOut) + '</span><span class="stat-label">Cash sales ' + rupee(cashIn) + ' minus cash purchases ' + rupee(cashOut) + '</span></div>';
+    }
+    cards = '<div class="rep-grid"><div class="rep-card big"><span class="stat-label">Profit this month (estimate)</span><span class="stat-num">' + signedMoney(profit) + '</span><span class="stat-label">Sales without GST minus purchases</span></div>' +
+      '<div class="rep-card"><span class="stat-label">Sales without GST</span><span class="stat-num">' + rupee(net) + '</span></div>' +
+      '<div class="rep-card"><span class="stat-label">Purchases</span><span class="stat-num">' + rupee(spent) + '</span><span class="stat-label">' + plural(list.length, 'entry') + '</span></div>' + drawer +
+      byCat.map(([l, v]) => '<div class="rep-card"><span class="stat-label">' + esc(l) + '</span><span class="stat-num">' + rupee(v) + '</span></div>').join('') + '</div>';
+    rows = list.length ? '<ul class="bill-rows">' + list.map(e => '<li><span class="br-no">' + esc(pDayShort(e.day || t)) + '</span><span class="br-main"><b>' + esc(e.name) + '</b><span class="muted">' +
+      esc((EXP_CATS.find(c => c[0] === e.cat) || [, 'Other'])[1]) + ', ' + esc(PAY.find(p => p[0] === e.pay)[1]) + (e.note ? ', ' + esc(e.note) : '') + '</span></span><span class="br-amt">' + exactMoney(e.amount) + '</span>' +
+      '<button type="button" class="mini" data-action="exp-del" data-id="' + esc(e.id) + '">Delete</button></li>').join('') + '</ul>'
+      : '<p class="empty">No purchases this month. Add what you buy (milk, tea leaves, gas) to see your real profit.</p>';
+  }
+  const form = '<form id="exp-form" class="panel-lite" novalidate><h3>Add a purchase</h3>' +
+    '<div class="row"><label class="field"><span>What did you buy?</span><input class="input" name="name" data-key="exp-name" maxlength="60" autocomplete="off" placeholder="Milk, 10 litres" value="' + esc(D.name) + '"></label>' +
+    '<label class="field"><span>Amount paid</span><input class="input" name="amount" data-key="exp-amount" inputmode="decimal" autocomplete="off" placeholder="0" value="' + esc(D.amount) + '"></label></div>' +
+    '<div class="field"><span>Type</span><div class="chips">' + EXP_CATS.map(([k, l]) => '<button type="button" class="chip" data-action="exp-cat" data-c="' + k + '" aria-pressed="' + (D.cat === k) + '">' + l + '</button>').join('') + '</div></div>' +
+    '<div class="field"><span>Paid by</span><div class="chips">' + PAY.map(([k, l]) => '<button type="button" class="chip" data-action="exp-pay" data-p="' + k + '" aria-pressed="' + (D.pay === k) + '">' + l + '</button>').join('') + '</div></div>' +
+    '<div class="row"><label class="field"><span>Date</span><input class="input" type="date" name="date" data-key="exp-date" max="' + t + '" value="' + esc(D.date || t) + '"></label>' +
+    '<label class="field"><span>Note (optional)</span><input class="input" name="note" data-key="exp-note" maxlength="100" autocomplete="off" value="' + esc(D.note) + '"></label></div>' +
+    (D.err ? '<p class="err" role="alert">' + esc(D.err) + '</p>' : '') +
+    '<button class="btn-primary inline" type="submit"' + (S.pBusy ? ' disabled' : '') + '>' + (S.pBusy ? 'Saving\u2026' : 'Save purchase') + '</button></form>';
+  return '<div class="wrap page"><div class="sec-head"><h2>Purchases and profit</h2></div><div class="sales-main">' + head + cards +
+    '<div class="rep-cols">' + form + '<section class="panel-lite"><h3>Purchases</h3>' + rows + '</section></div></div></div>';
+}
+async function savePurchase() {
+  const D = S.pDraft; if (S.pBusy) return;
+  const name = D.name.trim(), amount = Math.round(num(String(D.amount).replace(/,/g, '')) * 100) / 100, t = today();
+  if (!name) { D.err = 'Type what you bought.'; render(); return; }
+  if (!(amount > 0) || amount > 10000000) { D.err = 'Add the amount you paid.'; render(); return; }
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(D.date) && D.date <= t ? D.date : t;
+  const data = { name: name.slice(0, 60), cat: D.cat, amount, pay: D.pay, day, month: day.slice(0, 7), createdAt: serverTimestamp(), by: S.user.uid };
+  if (D.note.trim()) data.note = D.note.trim().slice(0, 100);
+  S.pBusy = true; D.err = ''; render();
+  try {
+    await addDoc(collection(db, 'cafes', S.cafeId, 'expenses'), data);
+    D.name = ''; D.amount = ''; D.note = '';
+    if (day.slice(0, 7) !== S.pMonth) { S.pMonth = day.slice(0, 7); subscribePurchases(); }
+    toast('Purchase saved: ' + rupee(amount) + '.');
+  } catch (e) {
+    D.err = e && e.code === 'permission-denied' ? 'Not allowed yet. Publish the new firestore.rules in Firebase, then try again.' : 'Couldn\u2019t save. Check your internet and try again.';
+  }
+  S.pBusy = false; render();
+}
+
 /* ---------- Menu view ---------- */
 function menuView() {
   const c = S.cafe;
@@ -694,12 +909,18 @@ function settingsView() {
     '<h3 class="form-sub">Sales day and unpaid tables</h3>' +
     '<div class="row"><label class="field"><span>Sales day ends at</span><select name="dayEndHour">' + [0, 1, 2, 3, 4, 5, 6].map(h => '<option value="' + h + '"' + (st.dayEndHour === h ? ' selected' : '') + '>' + (h === 0 ? '12 AM (midnight)' : h + ' AM') + '</option>').join('') + '</select><small>Pick a time after you close. Late-night sales then count for the right day.</small></label>' +
     '<label class="field"><span>Warn if a table hasn\u2019t paid after</span><select name="unpaidMins">' + [0, 10, 15, 20, 30, 45, 60].map(m => '<option value="' + m + '"' + (st.unpaidMins === m ? ' selected' : '') + '>' + (m ? m + ' minutes' : 'Don\u2019t warn') + '</option>').join('') + '</select><small>Counted from when the food is ready or served.</small></label></div>' +
-    (c.games ? '<h3 class="form-sub">Games and prizes</h3>' +
+    (c.leaderboard ? '<h3 class="form-sub">Leaderboard and prize</h3>' +
     '<div class="row"><label class="field"><span>Prize for the #1 player</span><input class="input" name="prize" maxlength="60" value="' + esc(st.prize) + '" placeholder="Like Free masala tea"><small>Customers see it in the games. Leave empty for no prize.</small></label>' +
     '<label class="field"><span>Leaderboard starts fresh</span><select name="lbPeriod"><option value="day"' + (st.lbPeriod !== 'week' ? ' selected' : '') + '>Every day, at closing time</option><option value="week"' + (st.lbPeriod === 'week' ? ' selected' : '') + '>Every week, on Monday</option></select><small>Whoever is #1 when it starts fresh wins the prize.</small></label></div>' : '') +
+    (c.whatsapp ? '<h3 class="form-sub">Customer club (WhatsApp)</h3>' +
+    '<label class="field"><span>Offer in messages</span><input class="input" name="clubOffer" maxlength="80" value="' + esc(st.clubOffer) + '" placeholder="Like a free Masala Chai with any snack"><small>Added to bills and to the "we miss you" message. Leave empty to send no offer.</small></label>' +
+    '<div class="row"><label class="field"><span>Say "we miss you" after</span><select name="clubWinbackDays">' + [7, 14, 21, 30, 45, 60].map(n => '<option value="' + n + '"' + (st.clubWinbackDays === n ? ' selected' : '') + '>' + n + ' days away</option>').join('') + '</select></label>' +
+    '<label class="field"><span>An offer is valid for</span><select name="clubValidDays">' + [3, 5, 7, 10, 14, 30].map(n => '<option value="' + n + '"' + (st.clubValidDays === n ? ' selected' : '') + '>' + n + ' days</option>').join('') + '</select></label></div>' +
+    '<div class="row"><label class="field"><span>Stamp card: a reward every</span><select name="clubRewardEvery"><option value="0"' + (st.clubRewardEvery === 0 ? ' selected' : '') + '>No stamp card</option>' + [5, 8, 10, 12, 15].map(n => '<option value="' + n + '"' + (st.clubRewardEvery === n ? ' selected' : '') + '>' + n + ' visits</option>').join('') + '</select></label>' +
+    '<label class="field"><span>Reward</span><input class="input" name="clubReward" maxlength="60" value="' + esc(st.clubReward) + '" placeholder="Like a free Cappuccino"></label></div>' : '') +
     '<div class="row-btns"><button class="btn-primary inline" type="submit"' + (S.savingSettings ? ' disabled' : '') + '>' + (S.savingSettings ? 'Saving\u2026' : 'Save') + '</button><button type="button" class="btn-ghost" data-action="test-print">Print a test bill</button></div>' +
     '<p class="fine left">Printing: pick your bill printer, set Margins to None, and turn off Headers and footers. The browser remembers it.</p></form>' +
-    (c.games ? lbPanelHtml() : '') +
+    (c.leaderboard ? lbPanelHtml() : '') +
     '<section class="panel-lite"><h3>Kitchen tickets (KOT)</h3><p class="muted" style="margin-bottom:12px">A KOT is a small slip for the cook: table, items and quantities in big letters, no prices. It uses the same printer and paper size as your bills.</p>' +
     '<div class="kot-set"><div><b>Print KOT automatically</b><small>On this device only. Prints once when an order is accepted or sent to the kitchen.</small></div>' +
     '<button type="button" class="sw" role="switch" aria-checked="' + kotAuto.get() + '" aria-label="Print KOT automatically" data-action="kot-auto"></button></div>' +
@@ -725,9 +946,10 @@ function render() {
     if (S.phase === 'denied') { app.innerHTML = noteView('No access', 'This login can\u2019t open \u201C' + S.cafeId + '\u201D. Check the link, or ask YUNO to add you.'); return; }
     if (S.view === 'settings' && S.settingsDirty && app.querySelector('#settings-form')) return;
     if (S.view === 'pos' && !S.pos) S.view = 'tables';
+    if (S.view === 'customers' && !S.cafe.whatsapp) S.view = 'tables';
     const scroller = app.querySelector('.ptile-grid'), cartBody = app.querySelector('.cart-body');
     const keep = S.view === 'pos' ? { g: scroller ? scroller.scrollTop : 0, c: cartBody ? cartBody.scrollTop : 0 } : null;
-    app.innerHTML = ({ tables: tablesView, pos: posView, bills: billsView, menu: menuView, settings: settingsView }[S.view])();
+    app.innerHTML = ({ tables: tablesView, pos: posView, bills: billsView, purchases: purchasesView, customers: customersView, menu: menuView, settings: settingsView }[S.view])();
     if (keep) { const g = app.querySelector('.ptile-grid'), cb = app.querySelector('.cart-body'); if (g) g.scrollTop = keep.g; if (cb) cb.scrollTop = keep.c; }
   });
 }
@@ -796,7 +1018,7 @@ function billDialog(d) {
     '<div class="bill-sum"><p><span>Subtotal</span><span>' + money2(b.subtotal) + '</span></p>' + (b.discount ? '<p><span>Discount</span><span>\u2212' + money2(b.discount) + '</span></p>' : '') +
     (b.gstPct ? '<p><span>CGST ' + (b.gstPct / 2) + '%</span><span>' + money2(b.gst / 2) + '</span></p><p><span>SGST ' + (b.gstPct / 2) + '%</span><span>' + money2(b.gst / 2) + '</span></p>' : '') +
     (b.roundOff ? '<p><span>Round off</span><span>' + money2(b.roundOff) + '</span></p>' : '') + '<p class="grand"><span>Total</span><span>' + rupee(b.total) + '</span></p></div>' +
-    '<p class="note-label">Paid by</p><div class="vegpick">' + PAY.map(([k, l]) => '<button type="button" data-action="pay" data-p="' + k + '" aria-pressed="' + (d.pay === k) + '">' + l + '</button>').join('') + '</div>' + errHtml(d) +
+    '<p class="note-label">Paid by</p><div class="vegpick">' + PAY.map(([k, l]) => '<button type="button" data-action="pay" data-p="' + k + '" aria-pressed="' + (d.pay === k) + '">' + l + '</button>').join('') + '</div>' + phoneFieldsHtml(d) + errHtml(d) +
     '<div class="dlg-actions" style="margin-top:16px"><button type="button" class="btn-primary" data-action="save-bill" data-print="1"' + (d.busy || !b.orders.length ? ' disabled' : '') + '>' + (d.busy ? 'Saving\u2026' : 'Save and print') + '</button>' +
     '<button type="button" class="btn btn-soft" data-action="save-bill" data-print="0"' + (d.busy || !b.orders.length ? ' disabled' : '') + '>Save only</button></div>', true);
 }
@@ -823,7 +1045,7 @@ function itemExtrasHtml(d) {
   const m = d.item, spice = m.spice === undefined ? -1 : m.spice, al = m.allergens || [];
   return '<div class="field"><span>Badge</span><div class="chips"><button type="button" class="chip" data-action="chef" aria-pressed="' + !!m.chef + '">\u2B50 Chef\u2019s pick</button></div>' +
       '<small>"Popular" badges are added automatically for your best sellers each week.</small></div>' +
-    '<h3 class="form-sub">For the dish helper</h3><p class="fine left" style="margin:-4px 2px 12px">Customers can ask about this dish by voice or by tapping. It only answers from what you write here.</p>' +
+    '<h3 class="form-sub">For the dish helper</h3><p class="fine left" style="margin:-4px 2px 12px">Customers can ask about this dish by tapping a question. It only answers from what you write here.</p>' +
     '<label class="field"><span>How it\u2019s made</span><textarea name="made" maxlength="300" placeholder="Like: Fresh milk boiled with tea leaves, ginger and cardamom">' + esc(m.made || '') + '</textarea></label>' +
     '<label class="field"><span>How it tastes</span><input class="input" name="taste" maxlength="200" value="' + esc(m.taste || '') + '" placeholder="Like: Strong, sweet and warming"></label>' +
     '<div class="field"><span>Spice level <span class="muted">(tap again to clear)</span></span><div class="chips">' + SPICE.map((l, i) => '<button type="button" class="chip" data-action="spice" data-v="' + i + '" aria-pressed="' + (spice === i) + '">' + l + '</button>').join('') + '</div></div>' +
@@ -863,7 +1085,7 @@ function renderDialog(focusTitle) {
   withFocus(() => {
     const el = $('#overlay'), d = S.dialog;
     if (!d) { el.innerHTML = ''; return; }
-    el.innerHTML = ({ actions: actionsDialog, tablepick: tablePickDialog, cancel: cancelDialog, edit: editDialog, bill: billDialog, void: voidDialog, item: itemDialog, cat: catDialog }[d.type])(d);
+    el.innerHTML = ({ actions: actionsDialog, tablepick: tablePickDialog, cancel: cancelDialog, edit: editDialog, bill: billDialog, void: voidDialog, item: itemDialog, cat: catDialog, wa: waDialog }[d.type])(d);
     dlgAnim = false;
   });
   if (focusTitle) { const h = $('#dlg-h'); if (h) h.focus({ preventScroll: true }); }
@@ -961,30 +1183,39 @@ async function sendDraft() {
   catch (e) { S.drafts[key] = backup; render(); toast('That didn\u2019t send. Check your internet and try again.'); }
 }
 function openBill(orderIds, label) {
-  openDialog({ type: 'bill', orderIds, label, skip: {}, discount: '', gstPct: S.cafe.settings.gstPct, pay: '', busy: false, err: '' });
+  openDialog({ type: 'bill', orderIds, label, skip: {}, discount: '', gstPct: S.cafe.settings.gstPct, pay: '', phone: '', cname: '', busy: false, err: '' });
 }
 // One-tap bill: no pop-up. Uses the normal GST, no discount, and prints straight away.
 function quickTotal(key) { return billCalc({ orderIds: billable(key).map(o => o.id), skip: {}, discount: '', gstPct: S.cafe.settings.gstPct }).total; }
 async function quickBill(pay) {
   if (S.quickBusy || !S.pos) return;
   const os = billable(S.pos.key); if (!os.length) return;
+  const key = S.pos.key, rawPhone = S.cafe.whatsapp ? (S.quickPhone[key] || '') : '';
   S.quickBusy = true; render();
-  await saveBill(true, { orderIds: os.map(o => o.id), label: keyTitle(S.pos.key), skip: {}, discount: '', gstPct: S.cafe.settings.gstPct, pay, busy: false, err: '' });
+  const ok = await saveBill(true, { orderIds: os.map(o => o.id), label: keyTitle(key), skip: {}, discount: '', gstPct: S.cafe.settings.gstPct, pay, phone: rawPhone, cname: '', busy: false, err: '' });
+  if (ok) delete S.quickPhone[key];
   S.quickBusy = false; render();
 }
 async function saveBill(print, quick) {
   const d = quick || S.dialog;
   const show = () => { if (quick) { if (d.err) toast(d.err); } else renderDialog(); };
-  if (!d.pay) { d.err = 'Choose how the customer paid.'; show(); return; }
+  if (!d.pay) { d.err = 'Choose how the customer paid.'; show(); return false; }
   const b = billCalc(d);
-  if (!b.orders.length) { d.err = 'Tick at least one order.'; show(); return; }
+  if (!b.orders.length) { d.err = 'Tick at least one order.'; show(); return false; }
+  // The phone is optional. If something is typed it has to be a real number, so a bill never goes to the wrong person.
+  const rawPhone = S.cafe.whatsapp ? String(d.phone || '').trim() : '', phone = rawPhone ? normPhone(rawPhone) : '';
+  if (rawPhone && !phone) { d.err = 'That phone number doesn\u2019t look right. Fix it, or clear it to skip WhatsApp.'; show(); return false; }
+  const cname = phone ? String(d.cname || '').trim().slice(0, 30) : '';
+  let custVisits = 0, custName = cname;
   d.busy = true; d.err = ''; if (!quick) renderDialog();
   const types = [...new Set(b.orders.map(o => o.type))];
   try {
     const billRef = doc(collection(db, 'cafes', S.cafeId, 'bills'));
     const counterRef = doc(db, 'cafes', S.cafeId, 'meta', 'counters');
+    const custRef = phone ? doc(db, 'cafes', S.cafeId, 'customers', phone) : null;
     const saved = await runTransaction(db, async tx => {
       const c = await tx.get(counterRef);
+      const cs = custRef ? await tx.get(custRef) : null;
       for (const o of b.orders) {
         const sn = await tx.get(orderRef(o.id)), x = sn.exists() ? sn.data() : null;
         if (!x) throw Object.assign(new Error('gone'), { code: 'gone' });
@@ -999,8 +1230,17 @@ async function saveBill(print, quick) {
         subtotal: b.subtotal, discount: b.discount, gstPct: b.gstPct, gst: b.gst, roundOff: b.roundOff, total: b.total,
         pay: d.pay, void: false, createdAt: serverTimestamp(), by: S.user.uid
       };
+      if (phone) { data.phone = phone; if (cname) data.cname = cname; }
       tx.set(counterRef, { billNo }, { merge: true });
       tx.set(billRef, data);
+      if (custRef) {
+        // Remember this customer: how often they come and what they spend. Used for the stamp card and win-back messages.
+        const old = cs.exists() ? cs.data() : null;
+        custVisits = (old ? parseInt(old.visits, 10) || 0 : 0) + 1; custName = cname || (old && typeof old.name === 'string' ? old.name : '');
+        tx.set(custRef, { phone, name: custName.slice(0, 30), visits: custVisits, spent: Math.round(((old ? num(old.spent) : 0) + b.total) * 100) / 100,
+          firstVisit: old && old.firstVisit ? old.firstVisit : serverTimestamp(), lastVisit: serverTimestamp(), lastBill: b.total,
+          offerCount: old ? parseInt(old.offerCount, 10) || 0 : 0, lastOfferAt: old && old.lastOfferAt ? old.lastOfferAt : 0, optOut: !!(old && old.optOut === true) });
+      }
       const [dk, delta] = summaryDelta(Object.assign({}, data, { createdAt: Date.now() }), 1);
       tx.set(dayRef(dk), delta, { merge: true });
       b.orders.forEach(o => tx.update(orderRef(o.id), { billId: billRef.id, updatedAt: serverTimestamp() }));
@@ -1009,12 +1249,15 @@ async function saveBill(print, quick) {
     if (!quick) closeDialog();
     toast('Bill #' + saved.billNo + ' saved' + (quick ? ', ' + rupee(saved.total) + ' by ' + PAY.find(p => p[0] === saved.pay)[1] : '') + '.');
     if (print) printReceipt(saved);
+    if (phone) openDialog({ type: 'wa', bill: saved, phone: phoneShow(phone), name: custName, visits: custVisits, fromBills: false });
     if (S.view === 'pos' && S.pos) setTimeout(() => { if (S.pos && !openOrders(S.pos.key).length && !draftFor(S.pos.key).items.length) { S.view = 'tables'; S.pos = null; render(); } }, 400);
   } catch (e) {
     d.busy = false;
     d.err = e && e.code === 'already-billed' ? 'One of these orders was already billed on another screen.' : e && e.code === 'cancelled' ? 'One of these orders was cancelled.' : 'The bill didn\u2019t save. Check your internet and try again.';
     show();
+    return false;
   }
+  return true;
 }
 async function moveOrders(orderIds, table) {
   try {
@@ -1033,7 +1276,7 @@ document.addEventListener('click', async e => {
   const t = e.target.closest('[data-action]'); if (!t) return;
   const a = t.dataset.action, id = t.dataset.id, d = S.dialog;
   switch (a) {
-    case 'view': S.view = t.dataset.v; S.pos = S.view === 'pos' ? S.pos : null; S.settingsDirty = false; closeCal(); if (S.view === 'bills') subscribeMonth(); render(); window.scrollTo(0, 0); break;
+    case 'view': S.view = t.dataset.v; S.pos = S.view === 'pos' ? S.pos : null; S.settingsDirty = false; closeCal(); if (S.view === 'bills') subscribeMonth(); if (S.view === 'purchases') subscribePurchases(); render(); window.scrollTo(0, 0); break;
     case 'cal-toggle': S.calOpen = !S.calOpen; if (S.calOpen) subscribeMonth(); render(); break;
     case 'pick-day': S.reportDate = t.dataset.day; S.calOpen = false; subscribeDayBills(); render(); break;
     case 'cal-prev': case 'cal-next': {
@@ -1119,7 +1362,7 @@ document.addEventListener('click', async e => {
     case 'save-bill': saveBill(t.dataset.print === '1'); break;
     case 'bill-menu': {
       const b = S.bills.concat(S.dayBills || []).find(x => x.id === id); if (!b) break;
-      openDialog({ type: 'actions', title: 'Bill #' + b.billNo, items: [['reprint', 'Print again', ' data-id="' + esc(b.id) + '"'], ...(b.void ? [] : [['open-void', 'Cancel this bill', ' data-id="' + esc(b.id) + '"', true]])] });
+      openDialog({ type: 'actions', title: 'Bill #' + b.billNo, items: [['reprint', 'Print again', ' data-id="' + esc(b.id) + '"'], ...(S.cafe.whatsapp && !b.void ? [['wa-bill', 'Send on WhatsApp', ' data-id="' + esc(b.id) + '"']] : []), ...(b.void ? [] : [['open-void', 'Cancel this bill', ' data-id="' + esc(b.id) + '"', true]])] });
       break;
     }
     case 'lb-refresh': loadLb(); break;
@@ -1178,6 +1421,25 @@ document.addEventListener('click', async e => {
       try { await writeCafe({ categories: S.cafe.categories.filter(c => c.id !== d.cat.id && c.id !== '_more') }, 'Category deleted.'); closeDialog(); } catch (err) { d.busy = false; renderDialog(); }
       break;
     }
+    case 'p-month': { const k = pShift(S.pMonth, parseInt(t.dataset.d, 10)); if (k <= today().slice(0, 7)) { S.pMonth = k; subscribePurchases(); render(); } break; }
+    case 'exp-cat': S.pDraft.cat = t.dataset.c; render(); break;
+    case 'exp-pay': S.pDraft.pay = t.dataset.p; render(); break;
+    case 'exp-del': {
+      if (t.dataset.armed !== '1') { t.dataset.armed = '1'; t.textContent = 'Tap again'; setTimeout(() => { if (t.isConnected) { t.dataset.armed = ''; t.textContent = 'Delete'; } }, 3000); break; }
+      try { await deleteDoc(doc(db, 'cafes', S.cafeId, 'expenses', t.dataset.id)); toast('Purchase deleted.'); } catch (err) { toast('Couldn\u2019t delete that. Try again.'); }
+      break;
+    }
+    case 'req-toggle': S.reqAll = !S.reqAll; render(); break;
+    case 'c-seg': S.custSeg = t.dataset.s; render(); break;
+    case 'c-send': case 'c-next': {
+      const c = a === 'c-next' ? custQueue(S.custSeg)[0] : (S.customers || []).find(x => x.id === id); if (!c) break;
+      sendClubMessage(c, a === 'c-next' ? S.custSeg : (t.dataset.k || 'winback'));
+      break;
+    }
+    case 'c-skip': { const c = (S.customers || []).find(x => x.id === id); if (c) custUpdate(c, { lastOfferAt: serverTimestamp() }, 'Skipped. They\u2019ll come back to this list after ' + S.cafe.settings.clubWinbackDays + ' days.'); break; }
+    case 'c-opt': { const c = (S.customers || []).find(x => x.id === id); if (c) custUpdate(c, { optOut: !c.optOut }, c.optOut ? 'They\u2019ll get messages again.' : 'Marked as do not message.'); break; }
+    case 'wa-bill': { const b = S.bills.concat(S.dayBills || []).find(x => x.id === id); if (b) openDialog({ type: 'wa', bill: b, phone: b.phone ? phoneShow(b.phone) : '', name: b.cname || '', visits: 0, fromBills: true }); break; }
+    case 'wa-sent': { const dd = S.dialog; if (dd && dd.type === 'wa') waRemember(dd); setTimeout(() => { if (S.dialog && S.dialog.type === 'wa') closeDialog(); }, 400); break; }
     case 'close': closeDialog(); break;
     case 'close-bg': if (e.target === t) closeDialog(); break;
     case 'signout': await signOut(auth); toast('Signed out.'); break;
@@ -1199,8 +1461,11 @@ let qrTimer = null;
 document.addEventListener('input', e => {
   const t = e.target, d = S.dialog;
   if (t.closest && t.closest('#settings-form')) S.settingsDirty = true;
+  if (t.closest && t.closest('#exp-form') && t.name) S.pDraft[t.name] = t.value;
   if (t.id === 'pos-search') { S.posSearch = t.value; render(); }
   if (t.id === 'draft-note' && S.pos) draftFor(S.pos.key).note = t.value;
+  if (t.id === 'q-phone' && S.pos) S.quickPhone[S.pos.key] = t.value;
+  if (t.id === 'c-search') { S.custSearch = t.value; render(); }
   if (t.id === 'draft-name' && S.pos) draftFor(S.pos.key).name = t.value;
   if (d) {
     if (t.id === 'd-discount') { d.discount = t.value; renderDialog(); }
@@ -1208,6 +1473,10 @@ document.addEventListener('input', e => {
     else if (t.id === 'ed-search') { d.search = t.value; renderDialog(); }
     else if (t.id === 'ed-note') d.note = t.value;
     else if (t.id === 'd-other') d.other = t.value;
+    else if (t.id === 'd-phone') d.phone = t.value;
+    else if (t.id === 'd-cname') d.cname = t.value;
+    else if (t.id === 'wa-phone') { d.phone = t.value; renderDialog(); }
+    else if (t.id === 'wa-name') { d.name = t.value; renderDialog(); }
     else if (t.id === 'd-void') d.reason = t.value;
   }
   if (t.id === 'qr-base') {
@@ -1222,6 +1491,7 @@ document.addEventListener('input', e => {
 document.addEventListener('submit', async e => {
   e.preventDefault();
   const f = e.target;
+  if (f.id === 'exp-form') { savePurchase(); return; }
   if (f.id === 'login-form') {
     const email = f.email.value.trim(), pw = f.password.value;
     if (!email || !pw) { S.loginErr = 'Enter your email and password.'; S.loginRerender = true; render(); return; }
@@ -1274,7 +1544,12 @@ document.addEventListener('submit', async e => {
     const settings = {
       prepMins, gstPct, address: f.address.value.trim().slice(0, 120), phone: f.phone.value.trim().slice(0, 30), gstin: f.gstin.value.trim().toUpperCase().slice(0, 20), footer: f.footer.value.trim().slice(0, 80), paper: f.paper.value === '58' ? '58' : '80',
       dayEndHour: Math.max(0, Math.min(6, parseInt(f.dayEndHour.value, 10) || 0)), unpaidMins: Math.max(0, Math.min(120, parseInt(f.unpaidMins.value, 10) || 0)),
-      prize: f.prize ? f.prize.value.trim().slice(0, 60) : S.cafe.settings.prize, lbPeriod: f.lbPeriod ? (f.lbPeriod.value === 'week' ? 'week' : 'day') : S.cafe.settings.lbPeriod
+      prize: f.prize ? f.prize.value.trim().slice(0, 60) : S.cafe.settings.prize, lbPeriod: f.lbPeriod ? (f.lbPeriod.value === 'week' ? 'week' : 'day') : S.cafe.settings.lbPeriod,
+      clubOffer: f.clubOffer ? f.clubOffer.value.trim().slice(0, 80) : S.cafe.settings.clubOffer,
+      clubWinbackDays: f.clubWinbackDays ? parseInt(f.clubWinbackDays.value, 10) : S.cafe.settings.clubWinbackDays,
+      clubValidDays: f.clubValidDays ? parseInt(f.clubValidDays.value, 10) : S.cafe.settings.clubValidDays,
+      clubRewardEvery: f.clubRewardEvery ? parseInt(f.clubRewardEvery.value, 10) : S.cafe.settings.clubRewardEvery,
+      clubReward: f.clubReward ? f.clubReward.value.trim().slice(0, 60) : S.cafe.settings.clubReward
     };
     S.savingSettings = true; S.settingsDirty = false; render();
     try { await writeCafe({ name: name.slice(0, 60), tables, settings }, 'Settings saved.'); } catch (err) {}
