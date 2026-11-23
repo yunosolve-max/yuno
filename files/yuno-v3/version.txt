@@ -1,0 +1,4 @@
+YUNO v3
+Waiter screen and waiter logins, two game switches, Purchases and profit,
+WhatsApp bills and customer club, counter layout polish, no tap-to-speak mic.
+If you can read this at yoursite/version.txt, the new files are live.
