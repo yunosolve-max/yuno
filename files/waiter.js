@@ -7,7 +7,7 @@ import {
 } from './fb.js';
 import {
   $, esc, rupee, money2, shortCode, toMs, ago, ls, toast, unlockAudio, chime, audioReady,
-  cleanCafe, BRAND_SVG, iconFor, bizDay, bizStart, payAmount, fmtTime, loginError, normPhone, phoneShow, waLink, billMessage
+  cleanCafe, BRAND_SVG, iconFor, bizDay, bizStart, payAmount, fmtTime, loginError, normPhone, phoneShow, waLink, billMessage, posterUrl
 } from './common.js';
 
 const params = new URLSearchParams(location.search);
@@ -447,7 +447,7 @@ async function payTable(n, pay) {
       os.forEach(o => tx.update(orderRef(o.id), { billId: billRef.id, updatedAt: serverTimestamp() }));
       return { billNo, total: b.total };
     });
-    if (phone && billObj) { delete S.phones[n]; S.wa = { phone, billNo: saved.billNo, link: waLink(phone, billMessage(S.cafe, billObj, { name: custName, visits: custVisits })) }; }
+    if (phone && billObj) { delete S.phones[n]; S.wa = { phone, billNo: saved.billNo, link: waLink(phone, billMessage(S.cafe, billObj, { name: custName, visits: custVisits, posterUrl: posterUrl(S.cafe, S.cafeId) })) }; }
     toast('Bill #' + saved.billNo + ' saved, ' + rupee(saved.total) + ' by ' + PAY.find(p => p[0] === pay)[1] + '. The counter can print it.');
     setTimeout(() => { if (S.table === n && !openOrders(n).length && !draftFor(n).items.length) closeTable(); }, 400);
   } catch (e) {

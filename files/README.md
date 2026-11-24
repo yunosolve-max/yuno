@@ -138,8 +138,21 @@ switch. Off hides every game, the leaderboard and the prize from that cafe's men
 Cafe staff can't change it. Cafes are on by default.
 
 ## Which version is live?
-Open `yoursite/version.txt`. If it says **YUNO v3**, the newest files are being served. If it is a 404, they are not.
+Open `yoursite/version.txt`. If it says **YUNO v4**, the newest files are being served. If it is a 404, they are not.
 The customer dish helper no longer has the "Tap and ask out loud" microphone button. Customers tap a question instead.
+
+## Messages, poster and the bill choice (latest)
+- **Paper bill / WhatsApp bill:** above Cash / UPI / Card (and in the full bill window) pick how the customer gets the bill.
+  Paper prints as always. WhatsApp bill needs a phone number and opens WhatsApp to send. You can pick both. The choice is remembered on that device.
+  With Paper only, a typed phone number still saves the customer for offers.
+- **Edit every message (Customers > Messages):** write your own words for "We miss you", "Thanks for coming", "Our regulars" and the bill.
+  Tap a button like **+ Customer name** to add their details. The grey preview shows exactly what they get. **Use ready-made words** brings back the standard text.
+  Each reminder can be switched on or off, and you choose after how many days it is sent. The offer line, address and "Reply STOP" line can be switched off.
+- **Poster:** in Customers > Messages, step 5, add a picture (a festival offer, a new dish) or paste a link (Instagram, Canva, Google Drive).
+  An uploaded picture opens as a full-screen page at `yoursite/poster?cafe=yourcafe` with a See our menu button.
+  In the Customers lists choose **What to send: Poster**, then tap Send for each customer. You can also add the poster link to the reminders and to the bill message.
+- **Download list:** Customers > All > Download list gives a spreadsheet file (CSV) of your customers.
+- No new Firebase rules are needed if you already published the rules from the previous package. The poster picture is stored in the cafe's public `media` record.
 
 ## WhatsApp bills and the customer club (added November 2026)
 Off until you switch it on: admin page > the cafe's card > **WhatsApp bills and customer club**.

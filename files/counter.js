@@ -6,7 +6,7 @@ import {
 } from './fb.js';
 import {
   $, esc, rupee, money2, shortCode, toMs, ago, ls, toast, unlockAudio, chime, alarm, stopAlarm, alarmPlaying, audioReady,
-  cleanCafe, newId, BRAND_SVG, dayKey, fmtTime, fmtDateTime, iconFor, bizDay, bizStart, payAmount, shortMoney, processPhoto, ALLERGENS, SPICE, loginError, printOut, printKot, kotAuto, kotPrintedOnce, lbPeriods, LB_GAMES, normPhone, phoneShow, waLink, billMessage, clubMessage } from './common.js';
+  cleanCafe, newId, BRAND_SVG, dayKey, fmtTime, fmtDateTime, iconFor, bizDay, bizStart, payAmount, shortMoney, processPhoto, ALLERGENS, SPICE, loginError, printOut, printKot, kotAuto, kotPrintedOnce, lbPeriods, LB_GAMES, normPhone, phoneShow, waLink, billMessage, clubMessage, MSG_DEFAULT, MSG_TAGS, posterUrl, processPoster } from './common.js';
 
 const params = new URLSearchParams(location.search);
 const VIEWS = ['tables', 'bills', 'purchases', 'customers', 'menu', 'settings'];
@@ -36,7 +36,9 @@ const S = {
   pos: null, drafts: {}, posCat: 'all', posSearch: '', cartOpen: false, acceptMins: {},
   billsTab: 'today', reportDate: '', calMonth: '', monthDays: null, dayBills: null, photos: undefined, endHour: null, calOpen: false,
   pMonth: '', exp: null, pDays: null, pBusy: false, pDraft: { name: '', amount: '', cat: 'stock', pay: 'cash', date: '', note: '', err: '' },
-  customers: null, custSeg: 'winback', custSearch: '', quickPhone: {}, reqAll: false,
+  customers: null, custSeg: 'winback', custSearch: '', quickPhone: {}, reqAll: false, clubDraft: null, clubSaving: false, custSend: 'reminder', posterImg: undefined, posterBusy: false,
+  // How the customer gets the bill. Remembered on this device. Only used when the WhatsApp feature is on.
+  bill: { paper: ls.get('yuno:billPaper', true) !== false, wa: ls.get('yuno:billWa', false) === true },
   soundOn: ls.get('yumotap:sound', true), alarmRepeat: ls.get('yumotap:alarmRepeat', true),
   pending: {}, dialog: null, loginErr: '', loginBusy: false, loginRerender: false,
   settingsDirty: false, savingSettings: false, qrBase: ls.get('yumotap:qrBase', location.origin)
@@ -513,8 +515,8 @@ function cartHtml() {
     : (os.length ? '' : '<p class="empty cart-empty">Tap items on the left to start an order.</p>');
   const foot = '<div class="cart-foot">' +
     (d.items.length ? '<button type="button" class="btn-primary" data-action="send">Send to kitchen, ' + rupee(draftTotal) + '</button>' : '') +
-    (billTotal && !d.items.length && S.cafe.whatsapp ? '<input class="input qphone" id="q-phone" data-key="q-phone" type="tel" inputmode="numeric" autocomplete="off" placeholder="Customer phone, optional (WhatsApp bill)" aria-label="Customer phone, optional" value="' + esc(S.quickPhone[key] || '') + '">' : '') +
-    (billTotal && !d.items.length ? '<p class="qb-h">One tap: save and print the bill, ' + rupee(quickTotal(key)) + '</p><div class="qb-row">' + PAY.map(([k, l]) => '<button type="button" class="qb" data-action="quick-bill" data-p="' + k + '"' + (S.quickBusy ? ' disabled' : '') + '>' + l + '</button>').join('') + '</div>' : '') +
+    (billTotal && !d.items.length && S.cafe.whatsapp ? billOptsHtml() + '<input class="input qphone" id="q-phone" data-key="q-phone" type="tel" inputmode="numeric" autocomplete="off" placeholder="' + (S.bill.wa ? 'Customer phone (needed for the WhatsApp bill)' : 'Customer phone, optional (saves them for offers)') + '" aria-label="Customer phone" value="' + esc(S.quickPhone[key] || '') + '">' : '') +
+    (billTotal && !d.items.length ? '<p class="qb-h">One tap: ' + (S.cafe.whatsapp ? payHint() : 'save and print the bill') + ', ' + rupee(quickTotal(key)) + '</p><div class="qb-row">' + PAY.map(([k, l]) => '<button type="button" class="qb" data-action="quick-bill" data-p="' + k + '"' + (S.quickBusy ? ' disabled' : '') + '>' + l + '</button>').join('') + '</div>' : '') +
     (billTotal ? '<button type="button" class="btn-bill' + (d.items.length ? ' secondary' : ' quiet') + '" data-action="bill-pos">' + (d.items.length ? 'Bill ' + rupee(billTotal) : 'Discount, GST or split bill') + '</button>' : '') + '</div>';
   return '<div class="cart-head"><div><h2>' + esc(keyTitle(key)) + '</h2><p class="muted">' + (os.length ? plural(os.length, 'order') + ' open' : 'No orders yet') + '</p></div>' +
     (os.length ? '<button type="button" class="btn-ghost" data-action="pos-menu">More</button>' : '') +
@@ -655,6 +657,136 @@ function billsView() {
   return '<div class="wrap page"><div class="sec-head"><h2>Bills and sales</h2></div><div class="sales-main">' + main + (isToday ? waitHtml() : '') + insightsHtml() + '</div></div>';
 }
 
+/* ---------- Customers > Messages: the owner writes every message ---------- */
+const NUMF = ['clubValidDays', 'clubRewardEvery', 'clubWinbackDays', 'clubSecondDays', 'clubRegularVisits', 'clubRegularQuiet'];
+const SAMPLE_BILL = { billNo: 101, label: 'Table 4', lines: [{ name: 'Masala Chai', qty: 2, price: 20 }, { name: 'Samosa', qty: 2, price: 15 }], subtotal: 70, discount: 0, gst: 3.5, gstPct: 5, total: 74, pay: 'upi' };
+function clubDraftInit() {
+  const st = S.cafe.settings, D = {};
+  ['clubOffer', 'clubValidDays', 'clubRewardEvery', 'clubReward', 'clubWinbackOn', 'clubWinbackDays', 'msgWinbackOffer', 'clubSecondOn', 'clubSecondDays', 'msgSecondOffer',
+    'clubRegularOn', 'clubRegularVisits', 'clubRegularQuiet', 'msgRegularOffer', 'msgBillOffer', 'msgContact', 'msgStop', 'clubPosterLink', 'msgReminderPoster', 'msgBillPoster'].forEach(k => { D[k] = st[k]; });
+  D.msgPoster = st.msgPoster || MSG_DEFAULT.poster;
+  D.msgOfferLine = st.msgOfferLine || MSG_DEFAULT.offerLine; D.msgBillTop = st.msgBillTop || MSG_DEFAULT.billTop; D.msgBillEnd = st.msgBillEnd || MSG_DEFAULT.billEnd;
+  D.msgWinback = st.msgWinback || MSG_DEFAULT.winback; D.msgSecond = st.msgSecond || MSG_DEFAULT.second; D.msgRegular = st.msgRegular || MSG_DEFAULT.regular;
+  return D;
+}
+function draftCafe() {
+  const st = Object.assign({}, S.cafe.settings), D = S.clubDraft || {};
+  Object.keys(D).forEach(k => { st[k] = typeof D[k] === 'string' ? D[k].trim() : D[k]; });
+  return { name: S.cafe.name, settings: st };
+}
+function clubPreviews() {
+  const dc = draftCafe(), pu = posterUrl(dc, S.cafeId) || (location.origin + '/poster?cafe=' + S.cafeId), me = { name: 'Rahul', visits: 6, posterUrl: pu };
+  const o = { posterUrl: pu };
+  return { winback: clubMessage(dc, me, 'winback', o), second: clubMessage(dc, me, 'second', o), regular: clubMessage(dc, me, 'regular', o), poster: clubMessage(dc, me, 'poster', o), bill: billMessage(dc, SAMPLE_BILL, me) };
+}
+function refreshClubPreviews() {
+  if (!S.clubDraft) return;
+  const P = clubPreviews();
+  document.querySelectorAll('[data-prev]').forEach(el => { el.textContent = P[el.dataset.prev] || ''; });
+}
+function posterEditorHtml(D, P, chk, text) {
+  const has = S.cafe.settings.clubPoster;
+  const box = has
+    ? '<div class="poster-box"><img class="poster-prev" alt="Your poster" ' + (S.posterImg ? 'src="' + esc(S.posterImg) + '"' : '') + '><div class="poster-btns">' +
+      '<label class="btn btn-soft poster-pick">Change poster<input type="file" id="poster-file" accept="image/*" hidden></label>' +
+      '<button type="button" class="btn btn-soft" data-action="poster-remove">Remove</button></div></div>'
+    : '<label class="poster-add"><b>' + (S.posterBusy ? 'Saving the poster\u2026' : '+ Add a poster') + '</b><span>Pick a picture from your phone or computer</span><input type="file" id="poster-file" accept="image/*" hidden></label>';
+  return '<section class="panel-lite"><h3><span class="stepno">5</span> Poster <span class="muted">(optional)</span></h3>' +
+    '<p class="msg-when">Send a poster for a new offer, a festival or an event. Customers tap the link and see it full screen. Send it from the Customers lists with <b>What to send: Poster</b>.</p>' + box +
+    '<label class="field"><span>Or paste a link to your poster</span><input class="input" name="clubPosterLink" data-key="cf-clubPosterLink" maxlength="300" inputmode="url" autocomplete="off" value="' + esc(D.clubPosterLink) + '" placeholder="https://..."><small>From Instagram, Google Drive, Canva or your website. A pasted link is used instead of an uploaded poster.</small></label>' +
+    '<div class="field"><span>Words that go with the poster</span>' + text('msgPoster', 'poster', 3) + '</div>' +
+    chk('msgReminderPoster', 'Also add the poster link to the "we miss you", "thanks" and "regulars" messages') + chk('msgBillPoster', 'Also add the poster link to the bill message') +
+    '<p class="note-label">What the customer gets</p><pre class="wa-preview" data-prev="poster">' + esc(P.poster) + '</pre></section>';
+}
+// The uploaded poster is kept in its own small public record, so the poster page can show it to anyone with the link.
+async function loadPoster() {
+  if (S.posterImg !== undefined || !S.cafe.settings.clubPoster) return;
+  S.posterImg = '';
+  try { const sn = await getDoc(doc(db, 'cafes', S.cafeId, 'media', 'poster')); S.posterImg = sn.exists() && typeof sn.data().img === 'string' ? sn.data().img : ''; } catch (e) { S.posterImg = ''; }
+  render();
+}
+async function uploadPoster(file) {
+  if (S.posterBusy) return;
+  S.posterBusy = true; render();
+  try {
+    const img = await processPoster(file);
+    await setDoc(doc(db, 'cafes', S.cafeId, 'media', 'poster'), { img, at: serverTimestamp() });
+    S.posterImg = img;
+    await writeCafe({ settings: Object.assign({}, S.cafe.settings, { clubPoster: true }) }, 'Poster saved. Customers can see it with the link.');
+  } catch (e) {
+    toast(e && e.message === 'big' ? 'That picture is too large to save. Try a smaller one.' : e && e.message === 'type' ? 'Pick a picture (JPG, PNG or WebP).' : 'Couldn\u2019t save the poster. Check your internet and try again.');
+  }
+  S.posterBusy = false; render();
+}
+async function removePoster() {
+  try {
+    await setDoc(doc(db, 'cafes', S.cafeId, 'media', 'poster'), { img: '', at: serverTimestamp() });
+    S.posterImg = '';
+    await writeCafe({ settings: Object.assign({}, S.cafe.settings, { clubPoster: false }) }, 'Poster removed.');
+  } catch (e) { toast('Couldn\u2019t remove the poster. Try again.'); }
+}
+function editorHtml() {
+  const D = S.clubDraft, P = clubPreviews();
+  const sel = (name, opts, fmt) => '<select name="' + name + '" data-key="cf-' + name + '">' + opts.map(n => '<option value="' + n + '"' + (Number(D[name]) === n ? ' selected' : '') + '>' + fmt(n) + '</option>').join('') + '</select>';
+  const chk = (name, label) => '<label class="check"><input type="checkbox" name="' + name + '" data-key="cf-' + name + '"' + (D[name] ? ' checked' : '') + '><span>' + label + '</span></label>';
+  const text = (name, def, rows) => '<textarea class="msg-text" name="' + name + '" data-key="cf-' + name + '" rows="' + (rows || 3) + '" maxlength="500">' + esc(D[name]) + '</textarea>' +
+    '<div class="tagchips" aria-label="Tap to add a detail">' + MSG_TAGS.map(([t, l]) => '<button type="button" class="tagchip" data-action="tag" data-t="' + esc(t) + '" data-for="' + name + '" title="' + esc(t) + '">+ ' + esc(l) + '</button>').join('') +
+    '<button type="button" class="tagchip reset" data-action="msg-reset" data-for="' + name + '" data-def="' + def + '">Use ready-made words</button></div>';
+  const days = (n) => n === 1 ? '1 day' : n + ' days';
+  const card = (title, on, whenHtml, name, def, offerName, prev) => '<div class="msg-card"><div class="msg-head"><h4>' + title + '</h4>' + (on ? chk(on, 'On') : '') + '</div>' +
+    '<p class="msg-when">' + whenHtml + '</p>' + text(name, def, 3) + chk(offerName, 'Add my offer line') +
+    '<p class="note-label">What the customer gets</p><pre class="wa-preview" data-prev="' + prev + '">' + esc(P[prev]) + '</pre></div>';
+  return '<form id="club-form" class="club-form" novalidate>' +
+    '<p class="club-intro">Write what your customers receive. Tap a button like <b>+ Customer name</b> to add their details. The preview shows exactly what they get.</p>' +
+    '<section class="panel-lite"><h3><span class="stepno">1</span> Your offer</h3>' +
+    '<label class="field"><span>What do you give?</span><input class="input" name="clubOffer" data-key="cf-clubOffer" maxlength="80" value="' + esc(D.clubOffer) + '" placeholder="Like a free Masala Chai with any snack"><small>Leave empty to send no offer.</small></label>' +
+    '<label class="field"><span>Offer works for</span>' + sel('clubValidDays', [3, 5, 7, 10, 14, 30], days) + '</label>' +
+    '<div class="field"><span>How the offer line reads</span>' + text('msgOfferLine', 'offerLine', 2) + '</div></section>' +
+    '<section class="panel-lite"><h3><span class="stepno">2</span> Stamp card <span class="muted">(optional)</span></h3><div class="row">' +
+    '<label class="field"><span>A reward every</span>' + sel('clubRewardEvery', [0, 5, 8, 10, 12, 15], n => n === 0 ? 'No stamp card' : n + ' visits') + '</label>' +
+    '<label class="field"><span>Reward</span><input class="input" name="clubReward" data-key="cf-clubReward" maxlength="60" value="' + esc(D.clubReward) + '" placeholder="Like a free Cappuccino"></label></div>' +
+    '<small class="fine left">The bill message shows their progress, like "Visit 7 of 10".</small></section>' +
+    '<section class="panel-lite"><h3><span class="stepno">3</span> Messages to bring customers back</h3>' +
+    card('We miss you', 'clubWinbackOn', 'Send to customers who have not visited for ' + sel('clubWinbackDays', [7, 14, 21, 30, 45, 60], days) + '.', 'msgWinback', 'winback', 'msgWinbackOffer', 'winback') +
+    card('Thanks for coming', 'clubSecondOn', 'Send to a customer who came once, ' + sel('clubSecondDays', [1, 2, 3, 5, 7], days) + ' after their visit.', 'msgSecond', 'second', 'msgSecondOffer', 'second') +
+    card('Our regulars', 'clubRegularOn', 'Send to customers with ' + sel('clubRegularVisits', [3, 5, 8, 10], n => n + ' or more visits') + ' who have been away for ' + sel('clubRegularQuiet', [5, 7, 10, 14, 21], days) + '.', 'msgRegular', 'regular', 'msgRegularOffer', 'regular') + '</section>' +
+    '<section class="panel-lite"><h3><span class="stepno">4</span> The bill message</h3>' +
+    '<p class="msg-when">Sent with every WhatsApp bill. The items and total are added for you.</p>' +
+    '<div class="field"><span>Greeting at the top</span>' + text('msgBillTop', 'billTop', 2) + '</div>' +
+    '<div class="field"><span>Words at the end</span>' + text('msgBillEnd', 'billEnd', 2) + '</div>' + chk('msgBillOffer', 'Add my offer line') +
+    '<p class="note-label">What the customer gets</p><pre class="wa-preview" data-prev="bill">' + esc(P.bill) + '</pre></section>' +
+    posterEditorHtml(D, P, chk, text) +
+    '<section class="panel-lite"><h3><span class="stepno">6</span> Extras</h3>' + chk('msgContact', 'Add my address and phone number at the end') + chk('msgStop', 'Add "Reply STOP if you do not want these messages"') + '</section>' +
+    '<div class="save-bar"><button type="submit" class="btn-primary"' + (S.clubSaving ? ' disabled' : '') + '>' + (S.clubSaving ? 'Saving\u2026' : 'Save messages') + '</button></div></form>';
+}
+async function saveClub() {
+  const D = S.clubDraft; if (!D || S.clubSaving) return;
+  const T = (k, def, max) => { const v = String(D[k] || '').trim().slice(0, max); return v === def ? '' : v; };
+  const link = String(D.clubPosterLink || '').trim().slice(0, 300);
+  if (link && !/^https?:\/\/\S+$/i.test(link)) { toast('The poster link must start with https://'); return; }
+  const patch = {
+    clubOffer: String(D.clubOffer || '').trim().slice(0, 80), clubValidDays: D.clubValidDays, clubRewardEvery: D.clubRewardEvery, clubReward: String(D.clubReward || '').trim().slice(0, 60),
+    clubWinbackOn: !!D.clubWinbackOn, clubWinbackDays: D.clubWinbackDays, msgWinbackOffer: !!D.msgWinbackOffer,
+    clubSecondOn: !!D.clubSecondOn, clubSecondDays: D.clubSecondDays, msgSecondOffer: !!D.msgSecondOffer,
+    clubRegularOn: !!D.clubRegularOn, clubRegularVisits: D.clubRegularVisits, clubRegularQuiet: D.clubRegularQuiet, msgRegularOffer: !!D.msgRegularOffer,
+    msgBillOffer: !!D.msgBillOffer, msgContact: !!D.msgContact, msgStop: !!D.msgStop,
+    msgOfferLine: T('msgOfferLine', MSG_DEFAULT.offerLine, 300), msgBillTop: T('msgBillTop', MSG_DEFAULT.billTop, 300), msgBillEnd: T('msgBillEnd', MSG_DEFAULT.billEnd, 300),
+    msgWinback: T('msgWinback', MSG_DEFAULT.winback, 500), msgSecond: T('msgSecond', MSG_DEFAULT.second, 500), msgRegular: T('msgRegular', MSG_DEFAULT.regular, 500),
+    clubPosterLink: link, msgPoster: T('msgPoster', MSG_DEFAULT.poster, 300), msgReminderPoster: !!D.msgReminderPoster, msgBillPoster: !!D.msgBillPoster
+  };
+  S.clubSaving = true; render();
+  try { await writeCafe({ settings: Object.assign({}, S.cafe.settings, patch) }, 'Messages saved.'); } catch (e) { /* writeCafe already told the user */ }
+  S.clubSaving = false; render();
+}
+function billOptsHtml() {
+  const B = S.bill;
+  return '<div class="bill-opts"><p class="qb-h">How does the customer get the bill?</p><div class="opt-row">' +
+    '<button type="button" class="opt" data-action="bill-opt" data-o="paper" aria-pressed="' + B.paper + '"><b>Paper bill</b><span>Prints on your bill printer</span></button>' +
+    '<button type="button" class="opt" data-action="bill-opt" data-o="wa" aria-pressed="' + B.wa + '"><b>WhatsApp bill</b><span>Opens WhatsApp to send</span></button></div></div>';
+}
+const payHint = () => (S.bill.paper && S.bill.wa ? 'save, print and send' : S.bill.paper ? 'save and print the bill' : S.bill.wa ? 'save and send the bill on WhatsApp' : 'save only, with no bill');
+const saveLabel = () => (S.bill.paper && S.bill.wa ? 'Save, print and send' : S.bill.paper ? 'Save and print' : S.bill.wa ? 'Save and send on WhatsApp' : 'Save without a bill');
+
 /* ---------- Customers: the club and WhatsApp messages ----------
    Customers are saved only when a phone number is typed at billing (it is always optional).
    The list below sorts itself: who has not been back, who came once, and the regulars.
@@ -680,9 +812,9 @@ function syncCustomers() {
 function custSegOf(c, now) {
   if (c.optOut || !c.lastVisit) return '';
   const st = S.cafe.settings, away = (now - c.lastVisit) / DAY_MS, sinceMsg = c.lastOfferAt ? (now - c.lastOfferAt) / DAY_MS : Infinity;
-  if (away >= st.clubWinbackDays && sinceMsg >= st.clubWinbackDays) return 'winback';
-  if (c.visits === 1 && away >= 2 && away < st.clubWinbackDays && !c.lastOfferAt) return 'second';
-  if (c.visits >= 5 && away >= 7 && away < st.clubWinbackDays && sinceMsg >= 30) return 'regular';
+  if (st.clubWinbackOn && away >= st.clubWinbackDays && sinceMsg >= st.clubWinbackDays) return 'winback';
+  if (st.clubSecondOn && c.visits === 1 && away >= st.clubSecondDays && away < st.clubWinbackDays && !c.lastOfferAt) return 'second';
+  if (st.clubRegularOn && c.visits >= st.clubRegularVisits && away >= st.clubRegularQuiet && away < st.clubWinbackDays && sinceMsg >= 30) return 'regular';
   return '';
 }
 function custQueue(seg) {
@@ -695,7 +827,9 @@ function custUpdate(c, patch, okMsg) {
 }
 // Open WhatsApp with the message ready, then note that this customer was messaged so they leave the list.
 function sendClubMessage(c, kind) {
-  const w = window.open(waLink(c.phone, clubMessage(S.cafe, c, kind)), '_blank');
+  const pu = posterUrl(S.cafe, S.cafeId);
+  if (kind === 'poster' && !pu) { toast('Add a poster first: Customers, then Messages.'); return; }
+  const w = window.open(waLink(c.phone, clubMessage(S.cafe, c, kind, { posterUrl: pu })), '_blank');
   if (!w) { toast('Your browser blocked WhatsApp. Allow pop-ups for this site, then tap again.'); return; }
   try { w.opener = null; } catch (e) {}
   custUpdate(c, { offerCount: c.offerCount + 1, lastOfferAt: serverTimestamp(), lastOfferKind: kind });
@@ -715,11 +849,11 @@ async function waRemember(d) {
 }
 function phoneFieldsHtml(d) {
   if (!S.cafe.whatsapp) return '';
-  return '<h3 class="form-sub">Bill on WhatsApp <span class="muted">(optional)</span></h3><div class="row"><label class="field"><span>Customer phone</span><input class="input" id="d-phone" data-key="d-phone" type="tel" inputmode="numeric" autocomplete="off" placeholder="98470 12345" value="' + esc(d.phone || '') + '"></label>' +
-    '<label class="field"><span>Name</span><input class="input" id="d-cname" data-key="d-cname" maxlength="30" autocomplete="off" value="' + esc(d.cname || '') + '"></label></div>';
+  return billOptsHtml() + '<div class="row"><label class="field"><span>Customer phone</span><input class="input" id="d-phone" data-key="d-phone" type="tel" inputmode="numeric" autocomplete="off" placeholder="98470 12345" value="' + esc(d.phone || '') + '"><small>' + (S.bill.wa ? 'Needed to send the WhatsApp bill.' : 'Optional. Saves them to your customer list.') + '</small></label>' +
+    '<label class="field"><span>Name (optional)</span><input class="input" id="d-cname" data-key="d-cname" maxlength="30" autocomplete="off" value="' + esc(d.cname || '') + '"></label></div>';
 }
 function waDialog(d) {
-  const phone = normPhone(d.phone), text = billMessage(S.cafe, d.bill, { name: String(d.name || '').trim().slice(0, 30), visits: d.visits });
+  const phone = normPhone(d.phone), text = billMessage(S.cafe, d.bill, { name: String(d.name || '').trim().slice(0, 30), visits: d.visits, posterUrl: posterUrl(S.cafe, S.cafeId) });
   const bad = String(d.phone || '').trim() && !phone;
   return shell(d.fromBills ? 'Send bill on WhatsApp' : 'Bill saved. Send it on WhatsApp?',
     '<div class="row"><label class="field"><span>Customer phone</span><input class="input" id="wa-phone" data-key="wa-phone" type="tel" inputmode="numeric" autocomplete="off" placeholder="98470 12345" value="' + esc(d.phone) + '"></label>' +
@@ -729,6 +863,15 @@ function waDialog(d) {
     '<div class="dlg-actions">' + (phone ? '<a class="btn-wa" href="' + esc(waLink(phone, text)) + '" target="_blank" rel="noopener" data-action="wa-sent">Send on WhatsApp</a>' : '<button type="button" class="btn-wa" disabled>Send on WhatsApp</button>') +
     '<button type="button" class="btn btn-soft" data-action="close">' + (d.fromBills ? 'Close' : 'Skip') + '</button></div>' +
     '<p class="fine">WhatsApp opens with this message ready. Tap Send there.</p>', true);
+}
+// The cafe's own copy of its customer list, to open in Excel or Google Sheets.
+function exportCustomers() {
+  const safe = (x) => { const t = String(x == null ? '' : x); return '"' + (/^[=+\-@]/.test(t) ? "'" + t : t).replace(/"/g, '""') + '"'; };
+  const rows = [['Phone', 'Name', 'Visits', 'Total spent', 'Last visit', 'Messages sent', 'Do not message']].concat((S.customers || []).map(c =>
+    [c.phone, c.name, c.visits, c.spent, c.lastVisit ? new Date(c.lastVisit).toISOString().slice(0, 10) : '', c.offerCount, c.optOut ? 'yes' : '']));
+  const csv = '\ufeff' + rows.map(r => r.map(safe).join(',')).join('\r\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = 'customers.csv';
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 function custRowHtml(c, kind, queued) {
   const away = c.lastVisit ? Math.floor((Date.now() - c.lastVisit) / DAY_MS) : 0, id = esc(c.id);
@@ -743,12 +886,16 @@ function customersView() {
   if (!list) return '<div class="wrap page"><div class="sec-head"><h2>Customers</h2></div><p class="empty">Loading\u2026</p></div>';
   const q = { winback: custQueue('winback'), second: custQueue('second'), regular: custQueue('regular') };
   const waiting = q.winback.length + q.second.length + q.regular.length, returning = list.filter(c => c.visits >= 2).length;
-  const SEGS = [['winback', 'Come back', q.winback.length], ['second', 'Second visit', q.second.length], ['regular', 'Regulars', q.regular.length], ['all', 'All', list.length]];
+  const SEGS = [['winback', 'Come back', q.winback.length], ['second', 'Second visit', q.second.length], ['regular', 'Regulars', q.regular.length], ['all', 'All', list.length], ['edit', '\u270E Messages', null]];
   const cards = '<div class="rep-grid club-stats"><div class="rep-card big"><span class="stat-label">Customers saved</span><span class="stat-num">' + list.length + '</span><span class="stat-label">' +
     (list.length ? Math.round(returning / list.length * 100) + '% came back at least once' : 'Type a phone number when billing to start your list') + '</span></div>' +
     '<div class="rep-card"><span class="stat-label">Waiting for a message</span><span class="stat-num">' + waiting + '</span></div>' +
     '<div class="rep-card"><span class="stat-label">Messages sent</span><span class="stat-num">' + list.reduce((a, c) => a + c.offerCount, 0) + '</span></div></div>';
-  const tabs = '<div class="chips seg-tabs">' + SEGS.map(([k, l, n]) => '<button type="button" class="chip" data-action="c-seg" data-s="' + k + '" aria-pressed="' + (seg === k) + '">' + l + ' <b>' + n + '</b></button>').join('') + '</div>';
+  const tabs = '<div class="chips seg-tabs">' + SEGS.map(([k, l, n]) => '<button type="button" class="chip" data-action="c-seg" data-s="' + k + '" aria-pressed="' + (seg === k) + '">' + l + (n === null ? '' : ' <b>' + n + '</b>') + '</button>').join('') + '</div>';
+  if (seg === 'edit') {
+    if (!S.clubDraft) S.clubDraft = clubDraftInit();
+    return '<div class="wrap page"><div class="sec-head"><h2>Customers</h2></div><div class="sales-main">' + tabs + editorHtml() + '</div></div>';
+  }
   const info = {
     winback: 'Not seen for ' + st.clubWinbackDays + '+ days. Best customers first.',
     second: 'Came once, 2+ days ago. A thank-you now makes them a regular.',
@@ -758,16 +905,20 @@ function customersView() {
   if (seg === 'all') {
     const s2 = S.custSearch.trim().toLowerCase(), now = Date.now();
     const rows = list.filter(c => !s2 || (c.name + ' ' + c.phone).toLowerCase().includes(s2)).slice(0, 200);
-    body = '<input class="input" id="c-search" data-key="c-search" placeholder="Search name or phone" value="' + esc(S.custSearch) + '" style="margin-bottom:10px">' +
+    body = '<div class="all-tools"><input class="input" id="c-search" data-key="c-search" placeholder="Search name or phone" value="' + esc(S.custSearch) + '"><button type="button" class="btn btn-soft" data-action="c-export">Download list</button></div>' +
       (rows.length ? '<ul class="bill-rows">' + rows.map(c => custRowHtml(c, c.visits === 1 ? 'second' : (now - c.lastVisit) / DAY_MS >= st.clubWinbackDays ? 'winback' : 'regular', false)).join('') + '</ul>' : '<p class="empty">No customers found.</p>');
   } else {
     const rows = q[seg];
     body = (rows.length ? '<button type="button" class="btn-wa big" data-action="c-next">Send to next customer (' + rows.length + ' waiting)</button>' : '') +
       (rows.length ? '<ul class="bill-rows">' + rows.map(c => custRowHtml(c, seg, true)).join('') + '</ul>' : '<p class="empty">Nobody to message here right now. This list fills itself as customers stay away.</p>');
   }
-  const preview = seg === 'all' ? '' : '<details class="wa-tip"><summary>See the message customers get</summary><pre class="wa-preview">' + esc(clubMessage(S.cafe, { name: 'Rahul' }, seg)) + '</pre></details>';
-  const noOffer = st.clubOffer ? '' : '<p class="club-warn">No offer is set yet, so messages only say hello. <button type="button" class="linkbtn" data-action="view" data-v="settings">Add an offer in Settings</button></p>';
-  return '<div class="wrap page"><div class="sec-head"><h2>Customers</h2></div><div class="sales-main">' + cards + noOffer + tabs + '<p class="muted" style="margin:6px 2px 12px">' + info + '</p>' + body + preview + '</div></div>';
+  const pu = posterUrl(S.cafe, S.cafeId), poster = S.custSend === 'poster';
+  const preview = seg === 'all' ? '' : '<details class="wa-tip"><summary>See the message customers get</summary><pre class="wa-preview">' + esc(clubMessage(S.cafe, { name: 'Rahul' }, poster ? 'poster' : seg, { posterUrl: pu || (location.origin + '/poster?cafe=' + S.cafeId) })) + '</pre></details>';
+  const mode = '<div class="send-mode"><span>What to send</span><div class="chips"><button type="button" class="chip" data-action="c-mode" data-m="reminder" aria-pressed="' + !poster + '">Reminder</button>' +
+    '<button type="button" class="chip" data-action="c-mode" data-m="poster" aria-pressed="' + poster + '">Poster</button></div></div>' +
+    (poster && !pu ? '<p class="club-warn">No poster yet. <button type="button" class="linkbtn" data-action="c-seg" data-s="edit">Add one in Messages</button></p>' : '');
+  const noOffer = st.clubOffer ? '' : '<p class="club-warn">No offer is set yet, so messages only say hello. <button type="button" class="linkbtn" data-action="c-seg" data-s="edit">Add an offer in Messages</button></p>';
+  return '<div class="wrap page"><div class="sec-head"><h2>Customers</h2></div><div class="sales-main">' + cards + noOffer + tabs + mode + '<p class="muted" style="margin:6px 2px 12px">' + info + '</p>' + body + preview + '</div></div>';
 }
 
 /* ---------- Purchases view: what the cafe spends, and the real profit ---------- */
@@ -912,12 +1063,7 @@ function settingsView() {
     (c.leaderboard ? '<h3 class="form-sub">Leaderboard and prize</h3>' +
     '<div class="row"><label class="field"><span>Prize for the #1 player</span><input class="input" name="prize" maxlength="60" value="' + esc(st.prize) + '" placeholder="Like Free masala tea"><small>Customers see it in the games. Leave empty for no prize.</small></label>' +
     '<label class="field"><span>Leaderboard starts fresh</span><select name="lbPeriod"><option value="day"' + (st.lbPeriod !== 'week' ? ' selected' : '') + '>Every day, at closing time</option><option value="week"' + (st.lbPeriod === 'week' ? ' selected' : '') + '>Every week, on Monday</option></select><small>Whoever is #1 when it starts fresh wins the prize.</small></label></div>' : '') +
-    (c.whatsapp ? '<h3 class="form-sub">Customer club (WhatsApp)</h3>' +
-    '<label class="field"><span>Offer in messages</span><input class="input" name="clubOffer" maxlength="80" value="' + esc(st.clubOffer) + '" placeholder="Like a free Masala Chai with any snack"><small>Added to bills and to the "we miss you" message. Leave empty to send no offer.</small></label>' +
-    '<div class="row"><label class="field"><span>Say "we miss you" after</span><select name="clubWinbackDays">' + [7, 14, 21, 30, 45, 60].map(n => '<option value="' + n + '"' + (st.clubWinbackDays === n ? ' selected' : '') + '>' + n + ' days away</option>').join('') + '</select></label>' +
-    '<label class="field"><span>An offer is valid for</span><select name="clubValidDays">' + [3, 5, 7, 10, 14, 30].map(n => '<option value="' + n + '"' + (st.clubValidDays === n ? ' selected' : '') + '>' + n + ' days</option>').join('') + '</select></label></div>' +
-    '<div class="row"><label class="field"><span>Stamp card: a reward every</span><select name="clubRewardEvery"><option value="0"' + (st.clubRewardEvery === 0 ? ' selected' : '') + '>No stamp card</option>' + [5, 8, 10, 12, 15].map(n => '<option value="' + n + '"' + (st.clubRewardEvery === n ? ' selected' : '') + '>' + n + ' visits</option>').join('') + '</select></label>' +
-    '<label class="field"><span>Reward</span><input class="input" name="clubReward" maxlength="60" value="' + esc(st.clubReward) + '" placeholder="Like a free Cappuccino"></label></div>' : '') +
+    (c.whatsapp ? '<h3 class="form-sub">Customer club (WhatsApp)</h3><p class="fine left" style="margin:-2px 2px 10px">Your offer, stamp card and the words of every customer message are in Customers, then Messages.</p><button type="button" class="btn btn-soft" data-action="c-edit" style="margin-bottom:14px">Open Messages</button>' : '') +
     '<div class="row-btns"><button class="btn-primary inline" type="submit"' + (S.savingSettings ? ' disabled' : '') + '>' + (S.savingSettings ? 'Saving\u2026' : 'Save') + '</button><button type="button" class="btn-ghost" data-action="test-print">Print a test bill</button></div>' +
     '<p class="fine left">Printing: pick your bill printer, set Margins to None, and turn off Headers and footers. The browser remembers it.</p></form>' +
     (c.leaderboard ? lbPanelHtml() : '') +
@@ -1019,8 +1165,10 @@ function billDialog(d) {
     (b.gstPct ? '<p><span>CGST ' + (b.gstPct / 2) + '%</span><span>' + money2(b.gst / 2) + '</span></p><p><span>SGST ' + (b.gstPct / 2) + '%</span><span>' + money2(b.gst / 2) + '</span></p>' : '') +
     (b.roundOff ? '<p><span>Round off</span><span>' + money2(b.roundOff) + '</span></p>' : '') + '<p class="grand"><span>Total</span><span>' + rupee(b.total) + '</span></p></div>' +
     '<p class="note-label">Paid by</p><div class="vegpick">' + PAY.map(([k, l]) => '<button type="button" data-action="pay" data-p="' + k + '" aria-pressed="' + (d.pay === k) + '">' + l + '</button>').join('') + '</div>' + phoneFieldsHtml(d) + errHtml(d) +
-    '<div class="dlg-actions" style="margin-top:16px"><button type="button" class="btn-primary" data-action="save-bill" data-print="1"' + (d.busy || !b.orders.length ? ' disabled' : '') + '>' + (d.busy ? 'Saving\u2026' : 'Save and print') + '</button>' +
-    '<button type="button" class="btn btn-soft" data-action="save-bill" data-print="0"' + (d.busy || !b.orders.length ? ' disabled' : '') + '>Save only</button></div>', true);
+    '<div class="dlg-actions" style="margin-top:16px">' + (S.cafe.whatsapp
+      ? '<button type="button" class="btn-primary" data-action="save-bill"' + (d.busy || !b.orders.length ? ' disabled' : '') + '>' + (d.busy ? 'Saving\u2026' : saveLabel()) + '</button>'
+      : '<button type="button" class="btn-primary" data-action="save-bill" data-print="1"' + (d.busy || !b.orders.length ? ' disabled' : '') + '>' + (d.busy ? 'Saving\u2026' : 'Save and print') + '</button>' +
+        '<button type="button" class="btn btn-soft" data-action="save-bill" data-print="0"' + (d.busy || !b.orders.length ? ' disabled' : '') + '>Save only</button>') + '</div>', true);
 }
 function voidDialog(d) {
   const b = S.bills.concat(S.dayBills || []).find(x => x.id === d.billId);
@@ -1192,7 +1340,7 @@ async function quickBill(pay) {
   const os = billable(S.pos.key); if (!os.length) return;
   const key = S.pos.key, rawPhone = S.cafe.whatsapp ? (S.quickPhone[key] || '') : '';
   S.quickBusy = true; render();
-  const ok = await saveBill(true, { orderIds: os.map(o => o.id), label: keyTitle(key), skip: {}, discount: '', gstPct: S.cafe.settings.gstPct, pay, phone: rawPhone, cname: '', busy: false, err: '' });
+  const ok = await saveBill(S.cafe.whatsapp ? S.bill.paper : true, { orderIds: os.map(o => o.id), label: keyTitle(key), skip: {}, discount: '', gstPct: S.cafe.settings.gstPct, pay, phone: rawPhone, cname: '', busy: false, err: '' });
   if (ok) delete S.quickPhone[key];
   S.quickBusy = false; render();
 }
@@ -1205,6 +1353,8 @@ async function saveBill(print, quick) {
   // The phone is optional. If something is typed it has to be a real number, so a bill never goes to the wrong person.
   const rawPhone = S.cafe.whatsapp ? String(d.phone || '').trim() : '', phone = rawPhone ? normPhone(rawPhone) : '';
   if (rawPhone && !phone) { d.err = 'That phone number doesn\u2019t look right. Fix it, or clear it to skip WhatsApp.'; show(); return false; }
+  const wantWa = !!(S.cafe.whatsapp && S.bill.wa);
+  if (wantWa && !rawPhone) { d.err = 'Type the customer\u2019s phone number to send the WhatsApp bill, or turn WhatsApp bill off.'; show(); return false; }
   const cname = phone ? String(d.cname || '').trim().slice(0, 30) : '';
   let custVisits = 0, custName = cname;
   d.busy = true; d.err = ''; if (!quick) renderDialog();
@@ -1249,7 +1399,7 @@ async function saveBill(print, quick) {
     if (!quick) closeDialog();
     toast('Bill #' + saved.billNo + ' saved' + (quick ? ', ' + rupee(saved.total) + ' by ' + PAY.find(p => p[0] === saved.pay)[1] : '') + '.');
     if (print) printReceipt(saved);
-    if (phone) openDialog({ type: 'wa', bill: saved, phone: phoneShow(phone), name: custName, visits: custVisits, fromBills: false });
+    if (phone && wantWa) openDialog({ type: 'wa', bill: saved, phone: phoneShow(phone), name: custName, visits: custVisits, fromBills: false });
     if (S.view === 'pos' && S.pos) setTimeout(() => { if (S.pos && !openOrders(S.pos.key).length && !draftFor(S.pos.key).items.length) { S.view = 'tables'; S.pos = null; render(); } }, 400);
   } catch (e) {
     d.busy = false;
@@ -1359,7 +1509,7 @@ document.addEventListener('click', async e => {
       break;
     }
     case 'pay': if (d) { d.pay = t.dataset.p; d.err = ''; renderDialog(); } break;
-    case 'save-bill': saveBill(t.dataset.print === '1'); break;
+    case 'save-bill': saveBill(S.cafe.whatsapp ? S.bill.paper : t.dataset.print === '1'); break;
     case 'bill-menu': {
       const b = S.bills.concat(S.dayBills || []).find(x => x.id === id); if (!b) break;
       openDialog({ type: 'actions', title: 'Bill #' + b.billNo, items: [['reprint', 'Print again', ' data-id="' + esc(b.id) + '"'], ...(S.cafe.whatsapp && !b.void ? [['wa-bill', 'Send on WhatsApp', ' data-id="' + esc(b.id) + '"']] : []), ...(b.void ? [] : [['open-void', 'Cancel this bill', ' data-id="' + esc(b.id) + '"', true]])] });
@@ -1430,10 +1580,26 @@ document.addEventListener('click', async e => {
       break;
     }
     case 'req-toggle': S.reqAll = !S.reqAll; render(); break;
-    case 'c-seg': S.custSeg = t.dataset.s; render(); break;
+    case 'bill-opt': { const k = t.dataset.o === 'wa' ? 'wa' : 'paper'; S.bill[k] = !S.bill[k]; ls.set(k === 'wa' ? 'yuno:billWa' : 'yuno:billPaper', S.bill[k]); if (S.dialog && S.dialog.type === 'bill') renderDialog(); else render(); break; }
+    case 'c-edit': S.view = 'customers'; S.custSeg = 'edit'; S.clubDraft = clubDraftInit(); loadPoster(); render(); window.scrollTo(0, 0); break;
+    case 'tag': {
+      const f = $('#club-form'), ta = f && f.elements[t.dataset.for]; if (!ta || !S.clubDraft) break;
+      const a0 = ta.selectionStart == null ? ta.value.length : ta.selectionStart, b0 = ta.selectionEnd == null ? a0 : ta.selectionEnd;
+      ta.value = ta.value.slice(0, a0) + t.dataset.t + ta.value.slice(b0);
+      const pos = a0 + t.dataset.t.length; ta.focus(); try { ta.setSelectionRange(pos, pos); } catch (err) {}
+      S.clubDraft[ta.name] = ta.value; refreshClubPreviews(); break;
+    }
+    case 'msg-reset': {
+      const f = $('#club-form'), ta = f && f.elements[t.dataset.for]; if (!ta || !S.clubDraft) break;
+      ta.value = MSG_DEFAULT[t.dataset.def] || ''; S.clubDraft[ta.name] = ta.value; refreshClubPreviews(); break;
+    }
+    case 'c-seg': S.custSeg = t.dataset.s; if (S.custSeg === 'edit') { S.clubDraft = clubDraftInit(); loadPoster(); } render(); break;
+    case 'c-export': exportCustomers(); break;
+    case 'c-mode': S.custSend = t.dataset.m === 'poster' ? 'poster' : 'reminder'; render(); break;
+    case 'poster-remove': removePoster(); break;
     case 'c-send': case 'c-next': {
       const c = a === 'c-next' ? custQueue(S.custSeg)[0] : (S.customers || []).find(x => x.id === id); if (!c) break;
-      sendClubMessage(c, a === 'c-next' ? S.custSeg : (t.dataset.k || 'winback'));
+      sendClubMessage(c, S.custSend === 'poster' ? 'poster' : a === 'c-next' ? S.custSeg : (t.dataset.k || 'winback'));
       break;
     }
     case 'c-skip': { const c = (S.customers || []).find(x => x.id === id); if (c) custUpdate(c, { lastOfferAt: serverTimestamp() }, 'Skipped. They\u2019ll come back to this list after ' + S.cafe.settings.clubWinbackDays + ' days.'); break; }
@@ -1454,6 +1620,7 @@ document.addEventListener('click', async e => {
 });
 document.addEventListener('change', e => {
   const t = e.target; if (!t || !t.dataset) return;
+  if (t.id === 'poster-file' && t.files && t.files[0]) { uploadPoster(t.files[0]); t.value = ''; return; }
   if (t.dataset.actionChange === 'switch-cafe') location.href = '/counter?cafe=' + encodeURIComponent(t.value);
   if (t.dataset.actionChange === 'bill-include' && S.dialog) { S.dialog.skip[t.dataset.id] = !t.checked; renderDialog(); }
 });
@@ -1465,6 +1632,7 @@ document.addEventListener('input', e => {
   if (t.id === 'pos-search') { S.posSearch = t.value; render(); }
   if (t.id === 'draft-note' && S.pos) draftFor(S.pos.key).note = t.value;
   if (t.id === 'q-phone' && S.pos) S.quickPhone[S.pos.key] = t.value;
+  if (t.closest && t.closest('#club-form') && t.name && S.clubDraft) { S.clubDraft[t.name] = t.type === 'checkbox' ? t.checked : (NUMF.includes(t.name) ? parseInt(t.value, 10) : t.value); refreshClubPreviews(); return; }
   if (t.id === 'c-search') { S.custSearch = t.value; render(); }
   if (t.id === 'draft-name' && S.pos) draftFor(S.pos.key).name = t.value;
   if (d) {
@@ -1492,6 +1660,7 @@ document.addEventListener('submit', async e => {
   e.preventDefault();
   const f = e.target;
   if (f.id === 'exp-form') { savePurchase(); return; }
+  if (f.id === 'club-form') { saveClub(); return; }
   if (f.id === 'login-form') {
     const email = f.email.value.trim(), pw = f.password.value;
     if (!email || !pw) { S.loginErr = 'Enter your email and password.'; S.loginRerender = true; render(); return; }
@@ -1541,16 +1710,11 @@ document.addEventListener('submit', async e => {
     if (!(tables >= 1 && tables <= 100)) { toast('Tables must be between 1 and 100.'); return; }
     if (!(prepMins >= 1 && prepMins <= 120)) { toast('Preparation time must be 1 to 120 minutes.'); return; }
     if (!(gstPct >= 0 && gstPct <= 28)) { toast('GST must be between 0 and 28%.'); return; }
-    const settings = {
+    const settings = Object.assign({}, S.cafe.settings, {
       prepMins, gstPct, address: f.address.value.trim().slice(0, 120), phone: f.phone.value.trim().slice(0, 30), gstin: f.gstin.value.trim().toUpperCase().slice(0, 20), footer: f.footer.value.trim().slice(0, 80), paper: f.paper.value === '58' ? '58' : '80',
       dayEndHour: Math.max(0, Math.min(6, parseInt(f.dayEndHour.value, 10) || 0)), unpaidMins: Math.max(0, Math.min(120, parseInt(f.unpaidMins.value, 10) || 0)),
-      prize: f.prize ? f.prize.value.trim().slice(0, 60) : S.cafe.settings.prize, lbPeriod: f.lbPeriod ? (f.lbPeriod.value === 'week' ? 'week' : 'day') : S.cafe.settings.lbPeriod,
-      clubOffer: f.clubOffer ? f.clubOffer.value.trim().slice(0, 80) : S.cafe.settings.clubOffer,
-      clubWinbackDays: f.clubWinbackDays ? parseInt(f.clubWinbackDays.value, 10) : S.cafe.settings.clubWinbackDays,
-      clubValidDays: f.clubValidDays ? parseInt(f.clubValidDays.value, 10) : S.cafe.settings.clubValidDays,
-      clubRewardEvery: f.clubRewardEvery ? parseInt(f.clubRewardEvery.value, 10) : S.cafe.settings.clubRewardEvery,
-      clubReward: f.clubReward ? f.clubReward.value.trim().slice(0, 60) : S.cafe.settings.clubReward
-    };
+      prize: f.prize ? f.prize.value.trim().slice(0, 60) : S.cafe.settings.prize, lbPeriod: f.lbPeriod ? (f.lbPeriod.value === 'week' ? 'week' : 'day') : S.cafe.settings.lbPeriod
+    });
     S.savingSettings = true; S.settingsDirty = false; render();
     try { await writeCafe({ name: name.slice(0, 60), tables, settings }, 'Settings saved.'); } catch (err) {}
     S.savingSettings = false; render();

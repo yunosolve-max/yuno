@@ -77,7 +77,7 @@ export function alarmPlaying() { return Date.now() < alarmEnd; }
 export function audioReady() { return !!(audioCtx && audioCtx.state === 'running'); }
 
 // Web names (the part of the link after the domain) that pages already use.
-export const RESERVED = ['counter', 'kitchen', 'waiter', 'admin', 'menu', 'index', 'css', 'js', 'api', 'qr'];
+export const RESERVED = ['counter', 'kitchen', 'waiter', 'poster', 'admin', 'menu', 'index', 'css', 'js', 'api', 'qr'];
 export function slugify(name) {
   return String(name || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
     .replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
@@ -85,7 +85,7 @@ export function slugify(name) {
 export function slugProblem(slug) {
   if (!slug) return 'Add a web name.';
   if (!/^[a-z0-9][a-z0-9-]{1,39}$/.test(slug)) return 'Use 2 to 40 small letters, numbers, or dashes.';
-  if (RESERVED.some(r => slug.startsWith(r))) return 'Web names can\u2019t start with counter, kitchen, waiter, admin, or menu.';
+  if (RESERVED.some(r => slug.startsWith(r))) return 'Web names can\u2019t start with counter, kitchen, waiter, poster, admin, or menu.';
   return '';
 }
 
@@ -129,7 +129,33 @@ export function cleanCafe(d) {
     clubWinbackDays: [7, 14, 21, 30, 45, 60].includes(parseInt(st.clubWinbackDays, 10)) ? parseInt(st.clubWinbackDays, 10) : 14,
     clubRewardEvery: [0, 5, 8, 10, 12, 15].includes(parseInt(st.clubRewardEvery, 10)) ? parseInt(st.clubRewardEvery, 10) : 0,
     clubReward: String(st.clubReward || '').slice(0, 60),
-    clubValidDays: [3, 5, 7, 10, 14, 30].includes(parseInt(st.clubValidDays, 10)) ? parseInt(st.clubValidDays, 10) : 7
+    clubValidDays: [3, 5, 7, 10, 14, 30].includes(parseInt(st.clubValidDays, 10)) ? parseInt(st.clubValidDays, 10) : 7,
+    // Each customer message can be switched on or off and sent after a number of days the owner picks.
+    clubWinbackOn: st.clubWinbackOn !== false,
+    clubSecondOn: st.clubSecondOn !== false,
+    clubSecondDays: [1, 2, 3, 5, 7].includes(parseInt(st.clubSecondDays, 10)) ? parseInt(st.clubSecondDays, 10) : 2,
+    clubRegularOn: st.clubRegularOn !== false,
+    clubRegularVisits: [3, 5, 8, 10].includes(parseInt(st.clubRegularVisits, 10)) ? parseInt(st.clubRegularVisits, 10) : 5,
+    clubRegularQuiet: [5, 7, 10, 14, 21].includes(parseInt(st.clubRegularQuiet, 10)) ? parseInt(st.clubRegularQuiet, 10) : 7,
+    // The words. Empty means "use the ready-made words" (MSG_DEFAULT). {name} {cafe} {offer} {days} {reward} {visits} {phone} {address} are filled in.
+    msgBillTop: String(st.msgBillTop || '').slice(0, 300),
+    msgBillEnd: String(st.msgBillEnd || '').slice(0, 300),
+    msgWinback: String(st.msgWinback || '').slice(0, 500),
+    msgSecond: String(st.msgSecond || '').slice(0, 500),
+    msgRegular: String(st.msgRegular || '').slice(0, 500),
+    msgOfferLine: String(st.msgOfferLine || '').slice(0, 300),
+    msgBillOffer: st.msgBillOffer !== false,
+    msgWinbackOffer: st.msgWinbackOffer !== false,
+    msgSecondOffer: st.msgSecondOffer !== false,
+    msgRegularOffer: st.msgRegularOffer !== false,
+    msgContact: st.msgContact !== false,
+    msgStop: st.msgStop !== false,
+    // A poster to send to customers: either one uploaded in Customers > Messages (clubPoster) or a link the owner pastes.
+    clubPoster: st.clubPoster === true,
+    clubPosterLink: /^https?:\/\/\S+$/i.test(String(st.clubPosterLink || '')) ? String(st.clubPosterLink).slice(0, 300) : '',
+    msgPoster: String(st.msgPoster || '').slice(0, 300),
+    msgReminderPoster: st.msgReminderPoster === true,
+    msgBillPoster: st.msgBillPoster === true
   };
   return {
     name: String(d.name || 'Cafe').slice(0, 60),
@@ -337,6 +363,29 @@ export function processPhoto(file) {
   });
 }
 
+// A poster: keep it readable on a phone (up to 1080 px on the long side) and small enough to store in one record (under about 600 KB).
+export function processPoster(file) {
+  return new Promise((resolve, reject) => {
+    if (!file || !/^image\//.test(file.type)) { reject(new Error('type')); return; }
+    if (file.size > 25 * 1024 * 1024) { reject(new Error('big')); return; }
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      for (const [max, q] of [[1080, 0.82], [1080, 0.7], [900, 0.7], [760, 0.65], [640, 0.6]]) {
+        const k = Math.min(1, max / Math.max(img.width, img.height)), w = Math.max(1, Math.round(img.width * k)), h = Math.max(1, Math.round(img.height * k));
+        const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+        const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); g.imageSmoothingQuality = 'high'; g.drawImage(img, 0, 0, w, h);
+        let data = cv.toDataURL('image/webp', q);
+        if (!/^data:image\/webp/.test(data)) data = cv.toDataURL('image/jpeg', q);
+        if (data.length <= 600000) { resolve(data); return; }
+      }
+      reject(new Error('big'));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('read')); };
+    img.src = url;
+  });
+}
+
 // A clear message for each way signing in can fail, so a network problem never looks like a wrong password.
 export function loginError(err) {
   const c = (err && err.code) || '';
@@ -430,11 +479,33 @@ export const phoneShow = (p) => (/^91\d{10}$/.test(p) ? p.slice(2, 7) + ' ' + p.
 export const waLink = (phone, text) => 'https://wa.me/' + phone + '?text=' + encodeURIComponent(text);
 const waMoney = (n) => '\u20B9' + (Math.round((Number(n) || 0) * 100) / 100).toFixed(2).replace(/\.00$/, '');
 const PAY_NAME = { cash: 'Cash', upi: 'UPI', card: 'Card' };
+// The ready-made words. A cafe can change every one of them (Customers > Messages).
+export const MSG_DEFAULT = {
+  billTop: 'Hi {name}! Thanks for visiting {cafe} \u2615',
+  billEnd: 'Hope to see you again soon!',
+  winback: 'Hi {name}, this is {cafe} \u2615 We miss you! It has been a while, and we would love to see you again.',
+  second: 'Hi {name}, thank you for visiting {cafe}! \u2615 We hope you enjoyed it, and we would love to see you again.',
+  regular: 'Hi {name}, you are one of our favourite regulars at {cafe}! \uD83D\uDC9B Thank you for coming back again and again.',
+  offerLine: 'Show this message at the counter and enjoy {offer}. Valid for {days} days.',
+  poster: 'Hi {name}, something new at {cafe}! \uD83C\uDF89 Take a look:\n{poster}'
+};
+// The tags an owner can tap to put into a message.
+export const MSG_TAGS = [['{name}', 'Customer name'], ['{cafe}', 'Cafe name'], ['{offer}', 'Your offer'], ['{days}', 'Offer days'], ['{reward}', 'Stamp reward'], ['{visits}', 'Their visits'], ['{phone}', 'Cafe phone'], ['{address}', 'Cafe address'], ['{poster}', 'Poster link']];
+// Fill the tags in. Unknown {words} stay as typed, so a typo is easy to see in the preview.
+export function msgFill(text, v) {
+  return String(text).replace(/\{(\w+)\}/g, (m, k) => (k in v ? String(v[k]) : m)).replace(/[ \t]{2,}/g, ' ').replace(/ ([,.!?;:])/g, '$1').trim();
+}
+function msgVars(cafe, o) {
+  const st = cafe.settings;
+  return { name: (o && o.name) || 'there', cafe: cafe.name, offer: st.clubOffer, days: st.clubValidDays, reward: st.clubReward, visits: (o && o.visits) || '', phone: st.phone, address: st.address, poster: (o && o.posterUrl) || '' };
+}
+const offerLine = (cafe, v) => (cafe.settings.clubOffer ? msgFill(cafe.settings.msgOfferLine || MSG_DEFAULT.offerLine, v) : '');
+const contactLines = (cafe) => (cafe.settings.msgContact ? [cafe.settings.address, cafe.settings.phone ? 'Call ' + cafe.settings.phone : ''].filter(Boolean) : []);
 // The bill, as a WhatsApp message. o = { name, visits } (visits counts this one, for the stamp card).
 export function billMessage(cafe, b, o) {
-  o = o || {}; const st = cafe.settings, L = [];
+  o = o || {}; const st = cafe.settings, v = msgVars(cafe, o), L = [];
   L.push('*' + cafe.name + '*');
-  L.push(o.name ? 'Hi ' + o.name + '! Thanks for visiting us \u2615' : 'Thanks for visiting us \u2615');
+  L.push(msgFill(st.msgBillTop || MSG_DEFAULT.billTop, v));
   L.push('');
   L.push('Bill #' + b.billNo + (b.label ? ', ' + b.label : ''));
   b.lines.forEach(l => L.push(l.qty + ' x ' + l.name + '   ' + waMoney(l.qty * l.price)));
@@ -449,17 +520,34 @@ export function billMessage(cafe, b, o) {
     L.push(r === 0 ? '\uD83C\uDF81 That was visit ' + o.visits + '! Show this message for your ' + st.clubReward + '.'
       : 'Visit ' + r + ' of ' + e + ': ' + (e - r) + ' more for your ' + st.clubReward + ' \uD83C\uDF81');
   }
-  if (st.clubOffer) { L.push(''); L.push('Come back within ' + st.clubValidDays + ' days and enjoy ' + st.clubOffer + '.'); }
-  if (st.address || st.phone) { L.push(''); if (st.address) L.push(st.address); if (st.phone) L.push('Call ' + st.phone); }
+  const off = st.msgBillOffer ? offerLine(cafe, v) : '';
+  if (off) { L.push(''); L.push(off); }
+  if (st.msgBillPoster && o.posterUrl && !JSON.stringify([st.msgBillTop, st.msgBillEnd]).includes('{poster}')) { L.push(''); L.push('See our latest poster: ' + o.posterUrl); }
+  const end = msgFill(st.msgBillEnd || MSG_DEFAULT.billEnd, v);
+  if (end) { L.push(''); L.push(end); }
+  const contact = contactLines(cafe);
+  if (contact.length) { L.push(''); contact.forEach(x => L.push(x)); }
   return L.join('\n');
 }
-// Messages that bring customers back. kind: 'winback' (not seen for a while), 'second' (came once), 'regular'.
-export function clubMessage(cafe, c, kind) {
-  const st = cafe.settings, hi = c.name ? 'Hi ' + c.name + ', ' : 'Hi, ', offer = st.clubOffer;
-  let t;
-  if (kind === 'regular') t = hi + 'you are one of our favourite regulars at ' + cafe.name + '! \uD83D\uDC9B Thank you for coming back again and again.' + (offer ? ' On your next visit: ' + offer + '.' : '');
-  else if (kind === 'second') t = hi + 'thank you for visiting ' + cafe.name + '! \u2615 We would love to see you again.' + (offer ? ' Visit within ' + st.clubValidDays + ' days and enjoy ' + offer + '.' : '');
-  else t = hi + 'this is ' + cafe.name + ' \u2615 We miss you!' + (offer ? ' Come back in the next ' + st.clubValidDays + ' days and enjoy ' + offer + '. Just show this message at the counter.' : ' Come and see us again soon.');
-  if (st.address) t += '\n' + st.address;
-  return t + '\n\n(Reply STOP if you do not want these messages.)';
+// Messages that bring customers back. kind: 'winback' (not seen for a while), 'second' (came once), 'regular',
+// or 'poster' (just the poster). c = { name, visits }. o = { posterUrl }.
+export function clubMessage(cafe, c, kind, o) {
+  const st = cafe.settings, K = kind === 'regular' ? 'Regular' : kind === 'second' ? 'Second' : 'Winback';
+  const v = msgVars(cafe, Object.assign({}, c, { posterUrl: o && o.posterUrl }));
+  const raw = kind === 'poster' ? (st.msgPoster || MSG_DEFAULT.poster) : (st['msg' + K] || MSG_DEFAULT[kind === 'regular' ? 'regular' : kind === 'second' ? 'second' : 'winback']);
+  const L = [msgFill(raw, v)];
+  // The poster link goes where {poster} is typed. If it is not typed anywhere, it is added at the end.
+  if (v.poster && !raw.includes('{poster}') && (kind === 'poster' || st.msgReminderPoster)) L.push(kind === 'poster' ? v.poster : 'See our latest poster: ' + v.poster);
+  const off = kind !== 'poster' && st['msg' + K + 'Offer'] ? offerLine(cafe, v) : '';
+  if (off) L.push(off);
+  const contact = contactLines(cafe);
+  if (contact.length) L.push(contact.join('\n'));
+  if (st.msgStop) L.push('(Reply STOP if you do not want these messages.)');
+  return L.join('\n\n');
+}
+// Where customers see the poster: a link the owner pasted, or the poster page for an uploaded poster ('' when there is none).
+export function posterUrl(cafe, cafeId) {
+  const st = cafe.settings;
+  if (st.clubPosterLink) return st.clubPosterLink;
+  return st.clubPoster && cafeId ? location.origin + '/poster?cafe=' + encodeURIComponent(cafeId) : '';
 }
