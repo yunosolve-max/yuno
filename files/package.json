@@ -1,0 +1,12 @@
+{
+  "name": "yuno",
+  "version": "4.1.0",
+  "private": true,
+  "description": "YUNO scan-to-order for cafes. The api folder sends phone alerts.",
+  "dependencies": {
+    "firebase-admin": "^12.7.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

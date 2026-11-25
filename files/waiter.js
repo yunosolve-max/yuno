@@ -9,6 +9,11 @@ import {
   $, esc, rupee, money2, shortCode, toMs, ago, ls, toast, unlockAudio, chime, audioReady,
   cleanCafe, BRAND_SVG, iconFor, bizDay, bizStart, payAmount, fmtTime, loginError, normPhone, phoneShow, waLink, billMessage, posterUrl
 } from './common.js';
+import { pushUI } from './push.js';
+import { pushOrder } from './push-send.js';
+
+// Phone alerts (work even when the phone is locked). See the Alerts button in the top bar.
+const push = pushUI({ role: 'waiter', ctx: () => ({ user: S.user, cafeId: S.cafeId }), onChange: () => render() });
 
 const params = new URLSearchParams(location.search);
 const PAY = [['cash', 'Cash'], ['upi', 'UPI'], ['card', 'Card']];
@@ -144,7 +149,7 @@ function startCafe() {
   subs.push(onSnapshot(cafeRef(), snap => {
     if (!snap.exists()) { stopSubs(); S.phase = 'nocafe'; render(); return; }
     S.cafe = cleanCafe(snap.data());
-    if (S.phase !== 'ready') { S.phase = 'ready'; keepAwake(); subscribeOrders(); }
+    if (S.phase !== 'ready') { S.phase = 'ready'; keepAwake(); push.sync(); subscribeOrders(); }
     document.title = S.cafe.name + ' | Waiter | YUNO';
     render();
   }, () => denied()));
@@ -191,6 +196,7 @@ function renderChrome() {
   $('#top-cafe').innerHTML = (S.cafe.brand.logo ? '<img class="top-logo" src="' + S.cafe.brand.logo + '" alt="">' : '') + esc(S.cafe.name);
   $('#top-tools').innerHTML = '<span class="muted" style="font-size:14px;font-weight:600">' + esc(S.waiterName) + '</span>' +
     '<button type="button" class="icon-btn' + (S.soundOn ? '' : ' off') + '" data-action="sound" aria-pressed="' + S.soundOn + '" aria-label="' + (S.soundOn ? 'Sound on. Tap to mute' : 'Sound off. Tap to turn on') + '">' + (S.soundOn ? ICONS.bell : ICONS.mute) + '</button>' +
+    push.button() +
     '<button type="button" class="btn-ghost" data-action="signout">Sign out</button>';
 }
 function loginView() {
@@ -376,7 +382,8 @@ async function sendDraft() {
   };
   S.sending = true; render();
   try {
-    await addDoc(collection(db, 'cafes', S.cafeId, 'orders'), data);
+    const oref = await addDoc(collection(db, 'cafes', S.cafeId, 'orders'), data);
+    pushOrder(S.cafeId, oref.id);
     S.drafts[n] = { items: [], note: '' };
     S.cartOpen = true;
     toast('Sent. The counter or kitchen will accept it.');
@@ -388,7 +395,7 @@ async function sendDraft() {
 async function updateOrder(id, data, okMsg, failMsg) {
   if (S.pending[id]) return false;
   S.pending[id] = true; render();
-  try { await updateDoc(orderRef(id), Object.assign({}, data, { updatedAt: serverTimestamp() })); if (okMsg) toast(okMsg); return true; }
+  try { await updateDoc(orderRef(id), Object.assign({}, data, { updatedAt: serverTimestamp() })); if (data.status === 'cancelled') pushOrder(S.cafeId, id); if (okMsg) toast(okMsg); return true; }
   catch (e) { toast(e && e.code === 'permission-denied' && failMsg ? failMsg : 'That didn\u2019t save. Check your internet and try again.'); return false; }
   finally { delete S.pending[id]; render(); }
 }
@@ -466,7 +473,8 @@ document.addEventListener('click', async e => {
   switch (a) {
     case 'unlock': render(); break;
     case 'sound': S.soundOn = !S.soundOn; ls.set('yumotap:wsound', S.soundOn); if (S.soundOn && wasReady) chime(); render(); break;
-    case 'signout': await signOut(auth); toast('Signed out.'); break;
+    case 'push': push.toggle(); break;
+    case 'signout': await push.release(); await signOut(auth); toast('Signed out.'); break;
     case 'forgot': {
       const f = $('#login-form'), email = f ? f.email.value.trim() : '';
       if (!email) { S.loginErr = 'Type your email above, then tap \u201CForgot password?\u201D again.'; S.loginRerender = true; render(); break; }

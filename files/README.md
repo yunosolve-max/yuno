@@ -24,6 +24,8 @@ and the cafe gets the order on the counter screen.
 - `firestore.rules`   Security rules to paste into Firebase
 - `_redirects`        Makes `/cornercup` open the menu page on Netlify
 - `vercel.json`       Page addresses for Vercel hosting (/admin, /counter, /kitchen, /waiter, /<cafe>)
+- `api/`              Alert server (runs on Vercel): `register.js`, `notify.js`, `health.js`
+- `push.js`, `push-send.js`, `firebase-messaging-sw.js`  Phone alerts (see START-HERE-ALERTS.md)
 
 ## Setup (in order)
 1. Firebase > Authentication > Users > Add user: your own admin email + password. Copy your User UID.
@@ -138,7 +140,7 @@ switch. Off hides every game, the leaderboard and the prize from that cafe's men
 Cafe staff can't change it. Cafes are on by default.
 
 ## Which version is live?
-Open `yoursite/version.txt`. If it says **YUNO v4**, the newest files are being served. If it is a 404, they are not.
+Open `yoursite/version.txt`. If it says **YUNO v4.1**, the newest files are being served. If it is a 404, they are not.
 The customer dish helper no longer has the "Tap and ask out loud" microphone button. Customers tap a question instead.
 
 ## Messages, poster and the bill choice (latest)
@@ -218,3 +220,9 @@ void bills, take parcel or counter orders, or accept and reject orders.
 
 A login can be both a staff login and a waiter login. Removing a waiter on the admin page stops that login
 opening the waiter screen straight away.
+
+## Phone alerts (added November 2026)
+Kitchen, counter and waiters get a notification on their phone even when it is locked or YUNO is minimized.
+Setup takes about 10 minutes: follow **START-HERE-ALERTS.md**. In short: paste the Firebase Web Push key into `push.js`,
+add the `FIREBASE_SERVICE_ACCOUNT` environment variable in Vercel, redeploy, then tap **Alerts** on each phone.
+No new Firestore rules are needed. Check the server any time at `yoursite/api/health`.

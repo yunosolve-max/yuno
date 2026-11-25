@@ -7,6 +7,11 @@ import {
 import {
   $, esc, rupee, money2, shortCode, toMs, ago, ls, toast, unlockAudio, chime, alarm, stopAlarm, alarmPlaying, audioReady,
   cleanCafe, newId, BRAND_SVG, dayKey, fmtTime, fmtDateTime, iconFor, bizDay, bizStart, payAmount, shortMoney, processPhoto, ALLERGENS, SPICE, loginError, printOut, printKot, kotAuto, kotPrintedOnce, lbPeriods, LB_GAMES, normPhone, phoneShow, waLink, billMessage, clubMessage, MSG_DEFAULT, MSG_TAGS, posterUrl, processPoster } from './common.js';
+import { pushUI } from './push.js';
+import { pushOrder } from './push-send.js';
+
+// Phone alerts (work even when the phone is locked). See the Alerts button in the top bar.
+const push = pushUI({ role: 'counter', ctx: () => ({ user: S.user, cafeId: S.cafeId }), onChange: () => render() });
 
 const params = new URLSearchParams(location.search);
 const VIEWS = ['tables', 'bills', 'purchases', 'customers', 'menu', 'settings'];
@@ -138,7 +143,7 @@ function writeCafe(data, okMsg) {
 async function updateOrder(id, data, okMsg) {
   if (S.pending[id]) return false;
   S.pending[id] = true; render();
-  try { await updateDoc(orderRef(id), Object.assign({}, data, { updatedAt: serverTimestamp() })); if (okMsg) toast(okMsg); return true; }
+  try { await updateDoc(orderRef(id), Object.assign({}, data, { updatedAt: serverTimestamp() })); if (data.status) pushOrder(S.cafeId, id); if (okMsg) toast(okMsg); return true; }
   catch (e) { toast('That didn\u2019t save. Check your internet and try again.'); return false; }
   finally { delete S.pending[id]; render(); }
 }
@@ -153,6 +158,7 @@ async function decideOrder(id, data, okMsg) {
       if (!sn.exists() || sn.data().status !== 'new') throw Object.assign(new Error('taken'), { code: 'taken' });
       tx.update(orderRef(id), Object.assign({}, data, { decidedBy: 'counter', updatedAt: serverTimestamp() }));
     });
+    if (data.status) pushOrder(S.cafeId, id);
     if (okMsg) toast(okMsg); return true;
   } catch (e) {
     toast(e && e.code === 'taken' ? 'The kitchen already handled this order.' : 'That didn\u2019t save. Check your internet and try again.');
@@ -302,7 +308,7 @@ function startCafe() {
     if (S.phase !== 'ready') {
       S.phase = 'ready'; S.endHour = h; S.reportDate = today(); S.calMonth = S.reportDate.slice(0, 7);
       S.pMonth = S.reportDate.slice(0, 7);
-      keepAwake(); subscribeDay(); if (S.view === 'bills') subscribeMonth(); if (S.view === 'purchases') subscribePurchases();
+      keepAwake(); push.sync(); subscribeDay(); if (S.view === 'bills') subscribeMonth(); if (S.view === 'purchases') subscribePurchases();
       ensureSummaries().then(updatePopular);
     } else if (h !== S.endHour) {
       S.endHour = h; S.reportDate = today(); S.calMonth = S.reportDate.slice(0, 7);
@@ -380,7 +386,7 @@ function renderChrome() {
   $('#top-nav').innerHTML = navBtns;
   nav.innerHTML = navBtns;
   $('#top-cafe').innerHTML = (S.cafe.brand.logo ? '<img class="top-logo" src="' + S.cafe.brand.logo + '" alt="">' : '') + esc(S.cafe.name + (S.cafe.acceptingOrders ? '' : ' (orders paused)'));
-  $('#top-tools').innerHTML = '<button type="button" class="icon-btn' + (S.soundOn ? '' : ' off') + '" data-action="sound" aria-pressed="' + S.soundOn + '" aria-label="' + (S.soundOn ? 'Sound on. Tap to mute' : 'Sound off. Tap to turn on') + '">' + (S.soundOn ? ICONS.bell : ICONS.mute) + '</button>';
+  $('#top-tools').innerHTML = '<button type="button" class="icon-btn' + (S.soundOn ? '' : ' off') + '" data-action="sound" aria-pressed="' + S.soundOn + '" aria-label="' + (S.soundOn ? 'Sound on. Tap to mute' : 'Sound off. Tap to turn on') + '">' + (S.soundOn ? ICONS.bell : ICONS.mute) + '</button>' + push.button();
 }
 
 /* ---------- Login + notes ---------- */
@@ -1327,7 +1333,7 @@ async function sendDraft() {
   };
   const backup = JSON.parse(JSON.stringify(d));
   S.drafts[key] = { items: [], note: '', name: d.name }; render();
-  try { await addDoc(collection(db, 'cafes', S.cafeId, 'orders'), data); toast('Sent to the kitchen.'); }
+  try { const oref = await addDoc(collection(db, 'cafes', S.cafeId, 'orders'), data); pushOrder(S.cafeId, oref.id); toast('Sent to the kitchen.'); }
   catch (e) { S.drafts[key] = backup; render(); toast('That didn\u2019t send. Check your internet and try again.'); }
 }
 function openBill(orderIds, label) {
@@ -1608,7 +1614,8 @@ document.addEventListener('click', async e => {
     case 'wa-sent': { const dd = S.dialog; if (dd && dd.type === 'wa') waRemember(dd); setTimeout(() => { if (S.dialog && S.dialog.type === 'wa') closeDialog(); }, 400); break; }
     case 'close': closeDialog(); break;
     case 'close-bg': if (e.target === t) closeDialog(); break;
-    case 'signout': await signOut(auth); toast('Signed out.'); break;
+    case 'push': push.toggle(); break;
+    case 'signout': await push.release(); await signOut(auth); toast('Signed out.'); break;
     case 'forgot': {
       const f = $('#login-form'); const email = f ? f.email.value.trim() : '';
       if (!email) { S.loginErr = 'Type your email above, then tap \u201CForgot password?\u201D again.'; S.loginRerender = true; render(); break; }

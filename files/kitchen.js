@@ -4,6 +4,11 @@ import {
   onAuthStateChanged, signInWithEmailAndPassword, signOut
 } from './fb.js';
 import { $, esc, toMs, ls, toast, unlockAudio, alarm, chime, stopAlarm, alarmPlaying, audioReady, cleanCafe, BRAND_SVG, fmtTime, shortCode, bizDay, bizStart, loginError, printKot, kotAuto, kotPrintedOnce } from './common.js';
+import { pushUI } from './push.js';
+import { pushOrder } from './push-send.js';
+
+// Phone alerts (work even when the phone is locked). See the Alerts button in the top bar.
+const push = pushUI({ role: 'kitchen', ctx: () => ({ user: S.user, cafeId: S.cafeId }), onChange: () => render() });
 
 const params = new URLSearchParams(location.search);
 const S = { phase: 'auth', user: null, cafeId: '', cafe: null, orders: [], soundOn: ls.get('yumotap:ksound', true), pending: {}, fresh: {}, acceptMins: {}, rejectOpen: null, stockOpen: false, stockBusy: {}, loginErr: '', loginBusy: false };
@@ -63,7 +68,7 @@ function subscribe() {
     if (!snap.exists()) { S.phase = 'denied'; render(); return; }
     S.cafe = cleanCafe(snap.data());
     if (S.cafe.settings.dayEndHour !== endHour) { endHour = S.cafe.settings.dayEndHour; subscribeOrders(); }
-    if (S.phase !== 'ready') { S.phase = 'ready'; keepAwake(); } render();
+    if (S.phase !== 'ready') { S.phase = 'ready'; keepAwake(); push.sync(); } render();
   }, () => { S.phase = 'denied'; render(); }));
 }
 setInterval(() => { if (S.phase === 'ready' && endHour !== null) { if (bizDay(endHour) !== day) subscribeOrders(); else render(); } }, 30000);
@@ -103,6 +108,7 @@ async function decide(id, data, okMsg) {
       tx.update(ref, Object.assign({}, data, { decidedBy: 'kitchen', updatedAt: serverTimestamp() }));
     });
     S.rejectOpen = null; toast(okMsg);
+    if (data.status) pushOrder(S.cafeId, id);
   } catch (e) { toast(e && e.code === 'taken' ? 'The counter already handled this order.' : 'That didn\u2019t save. Check your internet.'); }
   delete S.pending[id]; render();
 }
@@ -194,7 +200,7 @@ function render() {
   const cooking = S.orders.filter(o => o.status === 'preparing').sort((a, b) => (a.acceptedAt || a.createdAt) - (b.acceptedAt || b.createdAt));
   const done = S.orders.filter(o => o.status === 'ready').sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 8);
   $('#top-cafe').innerHTML = (S.cafe.brand.logo ? '<img class="top-logo" src="' + S.cafe.brand.logo + '" alt="">' : '') + esc(S.cafe.name);
-  $('#top-tools').innerHTML = (fresh.length ? '<span class="k-count k-count-new">' + fresh.length + ' new</span>' : '') + '<span class="k-count">' + cooking.length + ' to cook</span><button type="button" class="btn-ghost' + (S.stockOpen ? ' on' : '') + '" data-action="stock">Sold out</button><button type="button" class="btn-ghost' + (kotAuto.get() ? ' on' : '') + '" data-action="kot-auto" title="Print a kitchen ticket by itself for each new order">' + (kotAuto.get() ? 'Auto KOT on' : 'Auto KOT off') + '</button><button type="button" class="btn-ghost" data-action="sound">' + (S.soundOn ? 'Sound on' : 'Sound off') + '</button>';
+  $('#top-tools').innerHTML = (fresh.length ? '<span class="k-count k-count-new">' + fresh.length + ' new</span>' : '') + '<span class="k-count">' + cooking.length + ' to cook</span><button type="button" class="btn-ghost' + (S.stockOpen ? ' on' : '') + '" data-action="stock">Sold out</button><button type="button" class="btn-ghost' + (kotAuto.get() ? ' on' : '') + '" data-action="kot-auto" title="Print a kitchen ticket by itself for each new order">' + (kotAuto.get() ? 'Auto KOT on' : 'Auto KOT off') + '</button><button type="button" class="btn-ghost" data-action="sound">' + (S.soundOn ? 'Sound on' : 'Sound off') + '</button>' + push.button();
   app.innerHTML = '<div class="wrap page">' + (S.soundOn && !audioReady() ? '<button type="button" class="sound-banner" data-action="unlock">Tap here to turn on the order alarm</button>' : '') +
     (S.stockOpen ? stockHtml() : '') +
     (fresh.length ? '<section class="k-sec"><h3 class="k-h new">New orders: accept or reject</h3><div class="k-grid">' + fresh.map(newCard).join('') + '</div></section>' : '') +
@@ -207,7 +213,7 @@ function render() {
 async function setOrder(id, data, msg) {
   if (S.pending[id]) return;
   S.pending[id] = true; render();
-  try { await updateDoc(doc(db, 'cafes', S.cafeId, 'orders', id), Object.assign(data, { updatedAt: serverTimestamp() })); if (msg) toast(msg); }
+  try { await updateDoc(doc(db, 'cafes', S.cafeId, 'orders', id), Object.assign(data, { updatedAt: serverTimestamp() })); if (msg) toast(msg); if (data.status) pushOrder(S.cafeId, id); }
   catch (e) { toast('That didn\u2019t save. Check your internet.'); }
   delete S.pending[id]; render();
 }
@@ -232,7 +238,8 @@ document.addEventListener('click', async e => {
     case 'more': { const o = S.orders.find(x => x.id === id); if (o) setOrder(id, { prepMins: o.prepMins + 5 }, '5 more minutes added.'); break; }
     case 'sound': S.soundOn = !S.soundOn; ls.set('yumotap:ksound', S.soundOn); render(); if (S.soundOn) alarm(1.8); else stopAlarm(); break;
     case 'unlock': render(); break;
-    case 'signout': await signOut(auth); break;
+    case 'push': push.toggle(); break;
+    case 'signout': await push.release(); await signOut(auth); break;
   }
 });
 document.addEventListener('submit', async e => {

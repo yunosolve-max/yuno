@@ -1,4 +1,5 @@
-YUNO v4
+YUNO v4.1
+Phone alerts for kitchen, counter and waiters (works when the phone is locked).
 Waiter screen and waiter logins, two game switches, Purchases and profit,
 WhatsApp bills (paper, WhatsApp or both), customer club with editable messages,
 poster to send to customers, customer list download, counter layout polish, no tap-to-speak mic.

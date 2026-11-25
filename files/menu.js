@@ -4,6 +4,7 @@ let fbP = null;
 const FB = () => fbP || (fbP = import('./fb-menu.js'));
 FB();
 import { $, esc, rupee, shortCode, ls, toast, cleanCafe, iconFor, reducedMotion, toMs, payAmount, applyBrand, setFavicon, festNow, ALLERGENS, SPICE, SPICE_ML, SAMPLE_MENU } from './common.js';
+import { pushOrder, pushCall } from './push-send.js';
 
 const params = new URLSearchParams(location.search);
 function readCafeId() {
@@ -452,6 +453,7 @@ async function placeOrder() {
       table: S.table, items, note: S.note.trim().slice(0, 200), total, status: 'new', createdAt: serverTimestamp()
     });
     remember(ref.id);
+    pushOrder(cafeId, ref.id); // phone alert for the kitchen and counter
     { const p = readPass(); if (p) { p.ids = (p.ids || []).concat(ref.id).slice(-30); savePass(p); } }
     trackOrder(ref.id, Date.now());
     ls.set(LAST_KEY, { items: items.map(i => ({ id: i.id, qty: i.qty })), at: Date.now() });
@@ -475,7 +477,8 @@ async function callWaiter() {
   S.lastCallAt = Date.now();
   try {
     const { db, collection, addDoc, serverTimestamp } = await FB();
-    await addDoc(collection(db, 'cafes', cafeId, 'calls'), { table: S.table, createdAt: serverTimestamp() });
+    const cref = await addDoc(collection(db, 'cafes', cafeId, 'calls'), { table: S.table, createdAt: serverTimestamp() });
+    pushCall(cafeId, cref.id); // phone alert for waiters and the counter
     toast('A waiter is on the way to table ' + S.table + '.');
   } catch (e) {
     S.lastCallAt = 0;
@@ -531,7 +534,7 @@ document.addEventListener('click', e => {
       S.cancelArm = null;
       if (orderSubs[id] === 'demo') { (demoTimers[id] || []).forEach(clearTimeout); demoStep(id, { status: 'cancelled', cancelledBy: 'customer' }); break; }
       FB().then(({ db, doc, updateDoc, serverTimestamp }) => updateDoc(doc(db, 'cafes', cafeId, 'orders', id), { status: 'cancelled', cancelledBy: 'customer', updatedAt: serverTimestamp() }))
-        .then(() => toast('Your order is cancelled.'))
+        .then(() => { pushOrder(cafeId, id); toast('Your order is cancelled.'); })
         .catch(() => toast('The cafe already accepted your order. Please ask the staff if you want to cancel.'));
       break;
     }
